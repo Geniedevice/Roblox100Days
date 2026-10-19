@@ -59,6 +59,11 @@ function DataService.RecordDay(day)
 	end
 end
 
+-- 저장을 쓸 수 없으면 nil (RunSaveService도 같은 DataStore를 쓴다)
+function DataService.GetStore()
+	return store
+end
+
 function DataService.Start()
 	if game.PlaceId ~= 0 then
 		local ok, result = pcall(DataStoreService.GetDataStore, DataStoreService, Config.Data.StoreName)

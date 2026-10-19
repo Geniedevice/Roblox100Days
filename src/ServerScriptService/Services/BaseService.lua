@@ -84,7 +84,8 @@ local function getBarricadeFolder()
 	return folder
 end
 
-function BaseService.PlaceBarricade(cframe, place, healthBonus)
+function BaseService.PlaceBarricade(cframe, recipe, healthBonus)
+	local place = recipe.Place
 	local part = Instance.new("Part")
 	part.Name = "Barricade"
 	part.Anchored = true
@@ -93,6 +94,7 @@ function BaseService.PlaceBarricade(cframe, place, healthBonus)
 	part.Color = place.Color
 	part.Material = place.Material
 	local maxHealth = place.Health * (1 + healthBonus)
+	part:SetAttribute("Recipe", recipe.Id)
 	part:SetAttribute("MaxHealth", maxHealth)
 	part:SetAttribute("Health", maxHealth)
 	part.Parent = getBarricadeFolder()
@@ -126,6 +128,37 @@ function BaseService.DamageBarricade(part, amount)
 	end
 	part:SetAttribute("Health", health)
 	part.Transparency = 0.5 * (1 - health / part:GetAttribute("MaxHealth"))
+end
+
+-- 이어하기용. DataStore에 넣을 수 있게 숫자·문자열만 쓴다.
+function BaseService.Export()
+	local c = BaseService.GetCore()
+	local walls = {}
+	for _, part in getBarricadeFolder():GetChildren() do
+		table.insert(walls, {
+			Recipe = part:GetAttribute("Recipe"),
+			CFrame = { part.CFrame:GetComponents() },
+			Health = part:GetAttribute("Health"),
+			MaxHealth = part:GetAttribute("MaxHealth"),
+		})
+	end
+	return { MaxHealth = c:GetAttribute("MaxHealth"), Health = c:GetAttribute("Health"), Barricades = walls }
+end
+
+function BaseService.Import(data)
+	local c = BaseService.GetCore()
+	c:SetAttribute("MaxHealth", data.MaxHealth)
+	c:SetAttribute("Health", data.Health)
+	for _, wall in data.Barricades or {} do
+		for _, recipe in Config.Crafting do
+			if recipe.Id == wall.Recipe and recipe.Place then
+				local part = BaseService.PlaceBarricade(CFrame.new(table.unpack(wall.CFrame)), recipe, 0)
+				part:SetAttribute("MaxHealth", wall.MaxHealth)
+				part:SetAttribute("Health", wall.Health)
+				BaseService.DamageBarricade(part, 0) -- 손상 정도만큼 흐리게
+			end
+		end
+	end
 end
 
 function BaseService.Reset()

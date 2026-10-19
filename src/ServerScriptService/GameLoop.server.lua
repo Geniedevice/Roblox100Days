@@ -18,6 +18,7 @@ local ResourceService = require(Services.ResourceService)
 local CraftingService = require(Services.CraftingService)
 local CombatService = require(Services.CombatService)
 local DataService = require(Services.DataService)
+local RunSaveService = require(Services.RunSaveService)
 
 BaseService.GetCore()
 PlayerService.Start()
@@ -29,6 +30,7 @@ ResourceService.Start()
 CraftingService.Start()
 CombatService.Start()
 DataService.Start()
+RunSaveService.Start()
 Players.PlayerAdded:Connect(DayManager.SyncPlayer)
 
 local function isLost()
@@ -59,12 +61,13 @@ local function resetGame()
 	PlayerService.ResetAll()
 end
 
-local function runGame()
-	for day = 1, Config.TOTAL_DAYS do
+local function runGame(startDay)
+	for day = startDay, Config.TOTAL_DAYS do
 		WaveManager.Clear()
 		PlayerService.ReviveAll()
 		DayManager.StartDay(day)
 		DataService.RecordDay(day)
+		RunSaveService.Save(day)
 		if not waitPhase(Config.DAY_LENGTH) then
 			return false
 		end
@@ -90,8 +93,9 @@ while true do
 	end
 
 	resetGame()
-	local won = runGame()
+	local won = runGame(RunSaveService.Begin())
 	WaveManager.Stop()
+	RunSaveService.Clear()
 
 	if won then
 		Remotes.GameMessage:FireAllClients("100일 생존 성공!")

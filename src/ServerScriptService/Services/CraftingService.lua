@@ -28,7 +28,8 @@ local function canAfford(player, cost)
 end
 
 -- 플레이어가 보는 방향 앞 지면에 세운다. 지면을 못 찾으면 false.
-local function placeInFront(player, root, place)
+local function placeInFront(player, root, recipe)
+	local place = recipe.Place
 	local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
 	if look.Magnitude < 0.1 then
 		return false
@@ -46,7 +47,7 @@ local function placeInFront(player, root, place)
 	end
 
 	local position = hit.Position + Vector3.new(0, place.Size.Y / 2, 0)
-	BaseService.PlaceBarricade(CFrame.lookAt(position, position + look), place, player:GetAttribute("BarricadeBonus") or 0)
+	BaseService.PlaceBarricade(CFrame.lookAt(position, position + look), recipe, player:GetAttribute("BarricadeBonus") or 0)
 	return true
 end
 
@@ -69,7 +70,7 @@ function CraftingService.Start()
 		if recipe.Repair and not BaseService.Repair(recipe.Repair) then
 			return false, "코어를 수리할 필요가 없습니다"
 		end
-		if recipe.Place and not placeInFront(player, root, recipe.Place) then
+		if recipe.Place and not placeInFront(player, root, recipe) then
 			return false, "여기에는 설치할 수 없습니다"
 		end
 		if recipe.MaxHealth then

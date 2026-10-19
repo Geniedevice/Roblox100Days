@@ -94,6 +94,26 @@ function AugmentService.Reset()
 	table.clear(rerolls)
 end
 
+-- 이어하기용: 가진 증강(중첩 수)과 남은 새로고침 횟수
+function AugmentService.Export(player)
+	return { Owned = owned[player] or {}, Rerolls = rerolls[player] }
+end
+
+function AugmentService.Import(player, data)
+	owned[player] = {}
+	for id, stack in data.Owned or {} do
+		local augment = AugmentData[id]
+		if augment then
+			for _ = 1, stack do
+				augment.Apply(player)
+			end
+			owned[player][id] = stack
+		end
+	end
+	rerolls[player] = data.Rerolls
+	PlayerService.ApplyCharacterStats(player)
+end
+
 function AugmentService.Start()
 	Remotes.ChooseAugment.OnServerInvoke = function(player, id)
 		local offer = offers[player]
