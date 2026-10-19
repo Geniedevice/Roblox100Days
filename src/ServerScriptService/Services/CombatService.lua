@@ -1,25 +1,29 @@
--- 근접 무기(야구방망이) 지급, 서버 판정 공격, 좀비 처치 시 증강 효과 처리.
+-- 무기(야구방망이, 석궁) 지급, 서버 판정 공격, 좀비 처치 시 증강 효과 처리.
 local CollectionService = game:GetService("CollectionService")
+local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local CombatService = {}
 local lastSwing = {}
+local lastShot = {}
 
 local WEAPON_NAME = "야구방망이"
+local CROSSBOW_NAME = "석궁"
 
-local function createBat()
+local function createTool(name, size, color)
 	local tool = Instance.new("Tool")
-	tool.Name = WEAPON_NAME
+	tool.Name = name
 	tool.CanBeDropped = false
 	tool.GripPos = Vector3.new(0, 0, 1.2)
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.4, 0.4, 3.5)
+	handle.Size = size
 	handle.Material = Enum.Material.Wood
-	handle.Color = Color3.fromRGB(150, 105, 60)
+	handle.Color = color
 	handle.CanCollide = false
 	handle.Massless = true
 	handle.Parent = tool
@@ -108,21 +112,84 @@ function CombatService.Swing(player)
 	end
 end
 
-function CombatService.GiveWeapon(player)
-	local backpack = player:WaitForChild("Backpack")
+-- 석궁: 클라이언트가 조준점을 보내면 서버가 쿨다운·장착을 확인하고 레이캐스트로 판정한다.
+local function shoot(player, target)
 	local character = player.Character
-	if backpack:FindFirstChild(WEAPON_NAME) or (character and character:FindFirstChild(WEAPON_NAME)) then
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if typeof(target) ~= "Vector3" or not root or not humanoid or humanoid.Health <= 0
+		or not character:FindFirstChild(CROSSBOW_NAME) then
 		return
 	end
-	local tool = createBat()
-	tool.Activated:Connect(function()
-		CombatService.Swing(player)
-	end)
-	tool.Parent = backpack
+
+	local cooldown = Config.Ranged.Cooldown / (1 + (player:GetAttribute("AttackSpeedBonus") or 0))
+	local now = os.clock()
+	if now - (lastShot[player] or 0) < cooldown then
+		return
+	end
+	lastShot[player] = now
+
+	local origin = root.Position + Vector3.new(0, 1.5, 0)
+	local offset = target - origin
+	if offset.Magnitude < 0.1 then
+		return
+	end
+	local direction = offset.Unit * Config.Ranged.Range
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.RespectCanCollide = true
+	local hit = workspace:Raycast(origin, direction, params)
+	local hitPosition = hit and hit.Position or origin + direction
+
+	local length = (hitPosition - origin).Magnitude
+	local bolt = Instance.new("Part")
+	bolt.Anchored = true
+	bolt.CanCollide = false
+	bolt.CanQuery = false
+	bolt.Material = Enum.Material.Neon
+	bolt.Color = Color3.fromRGB(255, 220, 120)
+	bolt.Size = Vector3.new(0.15, 0.15, length)
+	bolt.CFrame = CFrame.lookAt(origin, hitPosition) * CFrame.new(0, 0, -length / 2)
+	bolt.Parent = workspace
+	Debris:AddItem(bolt, 0.15)
+
+	local zombie = hit and hit.Instance:FindFirstAncestorOfClass("Model")
+	if zombie and CollectionService:HasTag(zombie, "Zombie") then
+		local damage = Config.Ranged.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
+		CombatService.DamageZombie(zombie, damage, player)
+	end
+end
+
+local function hasTool(player, backpack, name)
+	local character = player.Character
+	return backpack:FindFirstChild(name) or (character and character:FindFirstChild(name))
+end
+
+-- 캐릭터가 생길 때마다 부른다. 석궁은 HasCrossbow면 같이 준다.
+function CombatService.GiveWeapon(player)
+	local backpack = player:WaitForChild("Backpack")
+	if not hasTool(player, backpack, WEAPON_NAME) then
+		local bat = createTool(WEAPON_NAME, Vector3.new(0.4, 0.4, 3.5), Color3.fromRGB(150, 105, 60))
+		bat.Activated:Connect(function()
+			CombatService.Swing(player)
+		end)
+		bat.Parent = backpack
+	end
+	if player:GetAttribute("HasCrossbow") and not hasTool(player, backpack, CROSSBOW_NAME) then
+		local crossbow = createTool(CROSSBOW_NAME, Vector3.new(0.5, 0.5, 2.5), Color3.fromRGB(70, 50, 35))
+		crossbow:SetAttribute("Ranged", true) -- 클라이언트가 이 표시로 조준 입력을 붙인다
+		crossbow.Parent = backpack
+	end
 end
 
 function CombatService.ForgetPlayer(player)
 	lastSwing[player] = nil
+	lastShot[player] = nil
+end
+
+function CombatService.Start()
+	Remotes.Shoot.OnServerEvent:Connect(shoot)
 end
 
 return CombatService

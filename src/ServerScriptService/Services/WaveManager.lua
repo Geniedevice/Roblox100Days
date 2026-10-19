@@ -7,11 +7,35 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local BaseService = require(script.Parent.BaseService)
 
 local WaveManager = {}
 local defaultTemplate
 local spawnToken = 0
+
+local walkAnimation = Instance.new("Animation")
+walkAnimation.AnimationId = Config.ZombieAI.WalkAnimation
+
+-- 서버에서 도는 Animate 스크립트가 없는 모델에 걷기 애니메이션을 붙인다.
+-- 기본 좀비에 딸려 오는 Animate는 LocalScript라 서버 소유 NPC에서는 실행되지 않는다.
+local function addWalkAnimation(zombie, humanoid)
+	local animate = zombie:FindFirstChild("Animate")
+	if animate and animate.ClassName == "Script" then
+		return
+	end
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+	local walk = animator:LoadAnimation(walkAnimation)
+	humanoid.Running:Connect(function(speed)
+		if speed > 0.5 then
+			if not walk.IsPlaying then
+				walk:Play()
+			end
+		elseif walk.IsPlaying then
+			walk:Stop()
+		end
+	end)
+end
 
 local function getFolder()
 	local folder = workspace:FindFirstChild("Zombies")
@@ -119,6 +143,7 @@ local function spawnZombie(typeName, day)
 	if root then
 		pcall(root.SetNetworkOwner, root, nil)
 	end
+	addWalkAnimation(zombie, humanoid)
 
 	CollectionService:AddTag(zombie, "Zombie")
 	humanoid.Died:Connect(function()
@@ -133,6 +158,10 @@ function WaveManager.Spawn(day)
 
 	if day % Config.Wave.BossEvery == 0 then
 		spawnZombie("Boss", day)
+		-- 밤 시작 문구가 먼저 보이도록 조금 늦게 띄운다
+		task.delay(2, function()
+			Remotes.GameMessage:FireAllClients("보스 좀비가 나타났다!")
+		end)
 	end
 
 	local count = math.floor(Config.Wave.BaseCount + day * Config.Wave.CountPerDay)

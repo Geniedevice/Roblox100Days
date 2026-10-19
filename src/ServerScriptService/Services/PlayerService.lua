@@ -26,6 +26,7 @@ function PlayerService.ResetAttributes(player)
 	for item in Config.Items do
 		player:SetAttribute(item, nil)
 	end
+	player:SetAttribute("HasCrossbow", nil)
 	player:SetAttribute("Hunger", Config.Survival.Max)
 	player:SetAttribute("Thirst", Config.Survival.Max)
 end

@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -72,7 +73,7 @@ local setThirst = makeBar(statFrame, "갈증", Color3.fromRGB(70, 160, 230), UDi
 
 -- 인벤토리: 재료 개수와 먹기/마시기 버튼
 local inventoryFrame = make("Frame", {
-	Position = UDim2.new(0, 12, 0, 70), Size = UDim2.new(0, 190, 0, 112), BackgroundTransparency = 1,
+	Position = UDim2.new(0, 12, 0, 70), Size = UDim2.new(0, 190, 0, 152), BackgroundTransparency = 1,
 }, gui)
 make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, inventoryFrame)
 local materialsLabel = make("TextLabel", {
@@ -117,6 +118,100 @@ local function showMessage(text)
 		end
 	end)
 end
+
+-- 제작 창: 버튼이나 C 키로 연다
+local craftPanel = make("Frame", {
+	Position = UDim2.new(0, 210, 0, 70), Size = UDim2.new(0, 240, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+	BackgroundColor3 = DARK, BackgroundTransparency = 0.2, Visible = false,
+}, gui)
+round(craftPanel)
+make("UIPadding", {
+	PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+}, craftPanel)
+make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, craftPanel)
+
+local function describe(recipe)
+	local costs = {}
+	for item, amount in recipe.Cost do
+		table.insert(costs, Config.Items[item].Name .. " " .. amount)
+	end
+	table.sort(costs)
+	local effect = recipe.Place and ("체력 " .. recipe.Place.Health)
+		or recipe.Repair and ("코어 +" .. recipe.Repair)
+		or recipe.MaxHealth and ("코어 최대 +" .. recipe.MaxHealth)
+		or "원거리 무기"
+	return string.format("%s  ·  %s\n%s", recipe.Name, effect, table.concat(costs, ", "))
+end
+
+local craftButtons = {}
+for i, recipe in Config.Crafting do
+	local button = make("TextButton", {
+		LayoutOrder = i, Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = Color3.fromRGB(60, 60, 72),
+		TextColor3 = WHITE, Font = Enum.Font.GothamBold, TextSize = 14, Text = describe(recipe),
+	}, craftPanel)
+	round(button)
+	button.Activated:Connect(function()
+		local _, message = Remotes.RequestCraft:InvokeServer(recipe.Id)
+		showMessage(message)
+	end)
+	craftButtons[button] = recipe
+end
+
+local function refreshCraft()
+	if not craftPanel.Visible then
+		return
+	end
+	for button, recipe in craftButtons do
+		local affordable = true
+		for item, amount in recipe.Cost do
+			if (player:GetAttribute(item) or 0) < amount then
+				affordable = false
+			end
+		end
+		button.BackgroundTransparency = affordable and 0 or 0.6
+	end
+end
+
+local craftToggle = make("TextButton", {
+	LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(90, 90, 105),
+	TextColor3 = WHITE, Font = Enum.Font.GothamBold, TextSize = 16, Text = "제작 (C)",
+}, inventoryFrame)
+round(craftToggle)
+local function toggleCraft()
+	craftPanel.Visible = not craftPanel.Visible
+end
+craftToggle.Activated:Connect(toggleCraft)
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.C then
+		toggleCraft()
+	end
+end)
+
+-- 원거리 무기(Ranged 표시가 있는 Tool): 클릭/터치한 지점을 서버로 보낸다
+local mouse = player:GetMouse()
+local hookedTools = setmetatable({}, { __mode = "k" })
+local function hookTool(tool)
+	if tool:IsA("Tool") and tool:GetAttribute("Ranged") and not hookedTools[tool] then
+		hookedTools[tool] = true
+		tool.Activated:Connect(function()
+			Remotes.Shoot:FireServer(mouse.Hit.Position)
+		end)
+	end
+end
+local function watchTools(container)
+	container.ChildAdded:Connect(hookTool)
+	for _, child in container:GetChildren() do
+		hookTool(child)
+	end
+end
+player.CharacterAdded:Connect(function(character)
+	watchTools(character)
+	watchTools(player:WaitForChild("Backpack"))
+end)
+if player.Character then
+	watchTools(player.Character)
+end
+watchTools(player:WaitForChild("Backpack"))
 
 -- 증강 선택 창
 local picker = make("Frame", {
@@ -254,6 +349,7 @@ RunService.Heartbeat:Connect(function()
 		Config.Items.Stone.Name, player:GetAttribute("Stone") or 0)
 	refreshEat()
 	refreshDrink()
+	refreshCraft()
 
 	local base = workspace:FindFirstChild("Base")
 	local core = base and base:FindFirstChild("Core")

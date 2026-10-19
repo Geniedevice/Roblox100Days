@@ -10,6 +10,8 @@ local DEFINITIONS = {
 	ChooseAugment = "RemoteFunction",
 	RerollAugment = "RemoteFunction",
 	UseItem = "RemoteFunction",
+	RequestCraft = "RemoteFunction",
+	Shoot = "RemoteEvent",
 }
 
 local folder
