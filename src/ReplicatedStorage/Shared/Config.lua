@@ -36,8 +36,11 @@ Config.ZombieAI = {
 	RepathTime = 2, -- 건물에 막혔을 때 길찾기를 다시 계산하는 간격(초)
 	AttackRange = 5,
 	AttackCooldown = 1,
-	WalkAnimation = "rbxassetid://507777826", -- Roblox 기본 R15 걷기
-	WalkAnimationR6 = "rbxassetid://180426354", -- Roblox 기본 R6 걷기 (ZombieModels의 R6 좀비용)
+	-- Roblox 공식 애니메이션. R6 = Drooling Zombie(Roblox) 세트, R15(모델이 없을 때의 기본 좀비) = 기본 걷기
+	Animations = {
+		R6 = { Walk = "rbxassetid://125749145", Arms = "rbxassetid://183294396", Attack = "rbxassetid://180416148" },
+		R15 = { Walk = "rbxassetid://507777826" },
+	},
 }
 
 -- 보스 내려찍기: 쿨다운마다 반경 안 플레이어에게 피해

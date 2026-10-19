@@ -11,6 +11,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local PlayerService = require(script.Parent.PlayerService)
 local BaseService = require(script.Parent.BaseService)
 local DayManager = require(script.Parent.DayManager)
+local WaveManager = require(script.Parent.WaveManager)
 
 local ZombieAI = {}
 local lastAttack = setmetatable({}, { __mode = "k" })
@@ -159,6 +160,7 @@ local function update(zombie, targets, aggroRange, now)
 		if canAttack then
 			lastAttack[zombie] = now
 			BaseService.DamageBarricade(wall, damage)
+			WaveManager.PlayAttack(zombie)
 		end
 		return
 	end
@@ -172,6 +174,7 @@ local function update(zombie, targets, aggroRange, now)
 	if bestDistance <= reach and canAttack then
 		lastAttack[zombie] = now
 		PlayerService.Damage(bestPlayer, damage)
+		WaveManager.PlayAttack(zombie)
 	end
 end
 

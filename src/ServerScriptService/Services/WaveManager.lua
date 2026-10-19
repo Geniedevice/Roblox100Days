@@ -14,21 +14,39 @@ local WaveManager = {}
 local defaultTemplate
 local spawnToken = 0
 
-local walkAnimation = Instance.new("Animation")
-walkAnimation.AnimationId = Config.ZombieAI.WalkAnimation
-local walkAnimationR6 = Instance.new("Animation")
-walkAnimationR6.AnimationId = Config.ZombieAI.WalkAnimationR6
+local ANIMATIONS = {}
+for rig, set in Config.ZombieAI.Animations do
+	ANIMATIONS[rig] = {}
+	for name, id in set do
+		local animation = Instance.new("Animation")
+		animation.AnimationId = id
+		ANIMATIONS[rig][name] = animation
+	end
+end
+local attackTracks = setmetatable({}, { __mode = "k" })
 
--- 서버에서 도는 Animate 스크립트가 없는 모델에 걷기 애니메이션을 붙인다.
+-- 서버에서 도는 Animate 스크립트가 없는 모델에 애니메이션을 붙인다(걷기, 팔 뻗기, 공격).
 -- 기본 좀비에 딸려 오는 Animate는 LocalScript라 서버 소유 NPC에서는 실행되지 않는다.
-local function addWalkAnimation(zombie, humanoid)
+local function addAnimations(zombie, humanoid)
 	local animate = zombie:FindFirstChild("Animate")
 	if animate and animate.ClassName == "Script" then
 		return
 	end
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
-	local isR6 = humanoid.RigType == Enum.HumanoidRigType.R6
-	local walk = animator:LoadAnimation(isR6 and walkAnimationR6 or walkAnimation)
+	local set = ANIMATIONS[humanoid.RigType == Enum.HumanoidRigType.R6 and "R6" or "R15"]
+	if set.Arms then
+		local arms = animator:LoadAnimation(set.Arms)
+		arms.Looped = true
+		arms.Priority = Enum.AnimationPriority.Action
+		arms:Play()
+	end
+	if set.Attack then
+		local attack = animator:LoadAnimation(set.Attack)
+		attack.Priority = Enum.AnimationPriority.Action2
+		attackTracks[zombie] = attack
+	end
+	local walk = animator:LoadAnimation(set.Walk)
+	walk.Looped = true -- R6 걷기 에셋은 반복 설정이 꺼져 있다
 	humanoid.Running:Connect(function(speed)
 		if speed > 0.5 then
 			if not walk.IsPlaying then
@@ -180,7 +198,7 @@ local function spawnZombie(typeName, day)
 	if root then
 		pcall(root.SetNetworkOwner, root, nil)
 	end
-	addWalkAnimation(zombie, humanoid)
+	addAnimations(zombie, humanoid)
 
 	CollectionService:AddTag(zombie, "Zombie")
 	humanoid.Died:Connect(function()
@@ -217,6 +235,13 @@ function WaveManager.Spawn(day, isNight)
 		end
 		spawnZombie(pickType(day), day)
 		task.wait(Config.Wave.SpawnInterval)
+	end
+end
+
+function WaveManager.PlayAttack(zombie)
+	local track = attackTracks[zombie]
+	if track then
+		track:Play()
 	end
 end
 

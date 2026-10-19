@@ -15,11 +15,23 @@ local lastShot = {}
 local WEAPON_NAME = "야구방망이"
 local CROSSBOW_NAME = "석궁"
 
+-- 손에 쥐는 자세. 손잡이 파트는 z축이 긴 막대이고, 메시는 Offset으로 그 축에 맞춰 붙인다.
+local GRIPS = {
+	-- 클래식 검처럼 세워 쥔다: 손잡이 +z가 위, 손은 가는 쪽 끝(-z), 굵은 쪽(+z)이 위
+	[WEAPON_NAME] = { Pos = Vector3.new(0, 0, -1.3), Forward = Vector3.new(0, -1, 0), Right = Vector3.new(1, 0, 0), Up = Vector3.new(0, 0, 1) },
+	-- 총처럼 앞으로 겨눈다: 손잡이 -z(활대 쪽)가 정면, 손은 활대 뒤 방아쇠 자리
+	[CROSSBOW_NAME] = { Pos = Vector3.new(0, -0.1, 0.5), Forward = Vector3.new(0, 0, -1), Right = Vector3.new(1, 0, 0), Up = Vector3.new(0, 1, 0) },
+}
+
 local function createTool(name, size, color)
 	local tool = Instance.new("Tool")
 	tool.Name = name
 	tool.CanBeDropped = false
-	tool.GripPos = Vector3.new(0, 0, 1.2)
+	local grip = GRIPS[name]
+	tool.GripForward = grip.Forward
+	tool.GripRight = grip.Right
+	tool.GripUp = grip.Up
+	tool.GripPos = grip.Pos
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
@@ -133,6 +145,15 @@ function CombatService.Swing(player)
 		return
 	end
 	lastSwing[player] = now
+
+	-- 기본 Animate 스크립트는 들고 있는 도구에 "toolanim" 값이 생기면 베기 애니메이션을 재생한다(클래식 검 방식)
+	local bat = character:FindFirstChild(WEAPON_NAME)
+	if bat then
+		local anim = Instance.new("StringValue")
+		anim.Name = "toolanim"
+		anim.Value = "Slash"
+		anim.Parent = bat
+	end
 
 	local damage = Config.Weapon.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
 	local function inFront(target, range)
