@@ -85,6 +85,9 @@ Config.Crafting = {
 
 Config.Barricade = { PlaceDistance = 6 } -- 플레이어 앞 몇 스터드에 설치할지
 
+-- 저장. 구조를 바꾸면 StoreName 버전을 올린다.
+Config.Data = { StoreName = "ZombieSurvival100_v1" }
+
 Config.Augment = {
 	EveryDays = 5,
 	PickTime = 30,

@@ -36,7 +36,7 @@ local gui = make("ScreenGui", { Name = "HUD", ResetOnSpawn = false }, player:Wai
 
 -- 상단: 일차 / 시간
 local dayLabel = make("TextLabel", {
-	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(0, 340, 0, 40),
+	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(0, 420, 0, 40),
 	BackgroundColor3 = DARK, BackgroundTransparency = 0.3, TextColor3 = WHITE,
 	Font = Enum.Font.GothamBold, TextSize = 20, Text = "대기 중...",
 }, gui)
@@ -66,6 +66,11 @@ local setCore = makeBar(gui, "기지 코어", Color3.fromRGB(80, 170, 255),
 local statFrame = make("Frame", {
 	Position = UDim2.new(0, 12, 1, -112), Size = UDim2.new(0, 230, 0, 100), BackgroundTransparency = 1,
 }, gui)
+-- 터치 기기에서는 왼쪽 아래 조이스틱과 겹치지 않게 오른쪽 위로 옮긴다
+if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+	statFrame.AnchorPoint = Vector2.new(1, 0)
+	statFrame.Position = UDim2.new(1, -12, 0, 70)
+end
 make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, statFrame)
 local setHealth = makeBar(statFrame, "체력", Color3.fromRGB(220, 70, 70), UDim2.new(1, 0, 0, 26))
 local setHunger = makeBar(statFrame, "배고픔", Color3.fromRGB(230, 150, 60), UDim2.new(1, 0, 0, 26))
@@ -333,8 +338,10 @@ Remotes.GameMessage.OnClientEvent:Connect(showMessage)
 RunService.Heartbeat:Connect(function()
 	if currentDay > 0 then
 		local remaining = math.max(0, math.floor(phaseEndsAt - workspace:GetServerTimeNow()))
-		dayLabel.Text = string.format("%d / %d일차  ·  %s %d:%02d",
-			currentDay, Config.TOTAL_DAYS, isNight and "밤" or "낮", remaining // 60, remaining % 60)
+		local best = player:GetAttribute("BestDay") or 0
+		dayLabel.Text = string.format("%d / %d일차  ·  %s %d:%02d%s",
+			currentDay, Config.TOTAL_DAYS, isNight and "밤" or "낮", remaining // 60, remaining % 60,
+			best > 0 and string.format("  ·  최고 %d일", best) or "")
 	end
 
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")

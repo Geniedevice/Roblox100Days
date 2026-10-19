@@ -17,6 +17,7 @@ local InventoryService = require(Services.InventoryService)
 local ResourceService = require(Services.ResourceService)
 local CraftingService = require(Services.CraftingService)
 local CombatService = require(Services.CombatService)
+local DataService = require(Services.DataService)
 
 BaseService.GetCore()
 PlayerService.Start()
@@ -27,6 +28,7 @@ InventoryService.Start()
 ResourceService.Start()
 CraftingService.Start()
 CombatService.Start()
+DataService.Start()
 Players.PlayerAdded:Connect(DayManager.SyncPlayer)
 
 local function isLost()
@@ -62,6 +64,7 @@ local function runGame()
 		WaveManager.Clear()
 		PlayerService.ReviveAll()
 		DayManager.StartDay(day)
+		DataService.RecordDay(day)
 		if not waitPhase(Config.DAY_LENGTH) then
 			return false
 		end
