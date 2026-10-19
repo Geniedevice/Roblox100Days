@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+*.rbxl.lock
+*.rbxlx.lock
+*.log
+backups/
+.claude/settings.local.json

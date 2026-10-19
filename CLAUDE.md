@@ -1,0 +1,1 @@
+Read AGENTS.md and README.md before working. Use the Roblox_Studio MCP configured in .mcp.json. Inspect and preserve the existing CopyOf100days game. Never claim MCP edits are saved to Git until the place file has been saved locally.
