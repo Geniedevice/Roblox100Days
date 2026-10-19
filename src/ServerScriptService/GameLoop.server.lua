@@ -1,4 +1,5 @@
--- 진입점. 낮(파밍, 배회 좀비) → 밤(좀비 무리) → 증강 → 다음 날을 100일 동안 반복한다. 전원 사망하면 패배.
+-- 진입점. 컴퍼니(상점) → 세상 탐사 PeriodDays일(낮 파밍, 밤 좀비 무리) → 귀환·생존비 납부를 100일까지 반복한다.
+-- 전원 사망하거나 생존비를 못 내면 패배.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -20,6 +21,7 @@ local CombatService = require(Services.CombatService)
 local DataService = require(Services.DataService)
 local RunSaveService = require(Services.RunSaveService)
 local AbilityService = require(Services.AbilityService)
+local CompanyService = require(Services.CompanyService)
 
 PlayerService.Start()
 ZombieAI.Start()
@@ -32,6 +34,7 @@ CombatService.Start()
 DataService.Start()
 RunSaveService.Start()
 AbilityService.Start()
+CompanyService.Start()
 Players.PlayerAdded:Connect(DayManager.SyncPlayer)
 
 local function isLost()
@@ -56,31 +59,41 @@ local function resetGame()
 	AugmentService.Reset()
 	LootService.Reset()
 	DayManager.Reset()
+	CompanyService.Reset()
 	PlayerService.ResetAll()
 end
 
+local function runDay(day)
+	WaveManager.Clear()
+	PlayerService.ReviveAll()
+	DayManager.StartDay(day)
+	DataService.RecordDay(day)
+	task.spawn(WaveManager.Spawn, day, false)
+	if not waitPhase(Config.DAY_LENGTH) then
+		return false
+	end
+
+	DayManager.StartNight()
+	task.spawn(WaveManager.Spawn, day, true)
+	local survived = waitPhase(Config.NIGHT_LENGTH)
+	WaveManager.Stop()
+	return survived
+end
+
 local function runGame(startDay)
-	for day = startDay, Config.TOTAL_DAYS do
-		WaveManager.Clear()
-		PlayerService.ReviveAll()
-		DayManager.StartDay(day)
-		DataService.RecordDay(day)
-		RunSaveService.Save(day)
-		task.spawn(WaveManager.Spawn, day, false)
-		if not waitPhase(Config.DAY_LENGTH) then
-			return false
+	local length = Config.Company.PeriodDays
+	for period = (startDay - 1) // length + 1, Config.TOTAL_DAYS // length do
+		local firstDay = (period - 1) * length + 1
+		RunSaveService.Save(firstDay) -- 컴퍼니에 있을 때만 저장한다(이어하면 이 기간 출발 전부터)
+		CompanyService.Lobby(period)
+		CompanyService.Launch()
+		for day = firstDay, period * length do
+			if not runDay(day) then
+				return false
+			end
 		end
-
-		DayManager.StartNight()
-		task.spawn(WaveManager.Spawn, day, true)
-		local survived = waitPhase(Config.NIGHT_LENGTH)
-		WaveManager.Stop()
-		if not survived then
+		if not CompanyService.Return(period) then
 			return false
-		end
-
-		if day < Config.TOTAL_DAYS and day % Config.Augment.EveryDays == 0 then
-			AugmentService.Offer(day)
 		end
 	end
 	return true
@@ -97,9 +110,10 @@ while true do
 	RunSaveService.Clear()
 
 	if won then
-		Remotes.GameMessage:FireAllClients("100일 생존 성공!")
+		Remotes.GameMessage:FireAllClients("100일 생존 성공! 컴퍼니가 당신을 인정했습니다")
 	else
-		Remotes.GameMessage:FireAllClients(string.format("%d일차에 쓰러졌습니다... 10초 후 다시 시작", DayManager.Day))
+		Remotes.GameMessage:FireAllClients(string.format("%d일차에 끝났습니다... 10초 후 다시 시작", DayManager.Day))
 	end
 	task.wait(10)
+	workspace:SetAttribute("Phase", "Lobby")
 end

@@ -37,11 +37,11 @@ local function available(player, rarity, used)
 	return pool
 end
 
-local function rollOffer(player, day)
+local function rollOffer(player, day, count)
 	local late = day >= 50 or day % Config.Wave.BossEvery == 0
 	local odds = late and Config.Augment.LateOdds or Config.Augment.Odds
 	local picks, used = {}, {}
-	for _ = 1, 3 do
+	for _ = 1, count or 3 do
 		local pool = available(player, rollRarity(odds), used)
 		if #pool == 0 then
 			pool = available(player, nil, used)
@@ -117,6 +117,18 @@ function AugmentService.CatchUp(player, day)
 	catchUp[player] = { Left = missed - 1, Day = day }
 	present(player, day)
 	return missed
+end
+
+-- 컴퍼니 상점용: 아직 더 올릴 수 있는 증강 중 count개를 추첨한다
+function AugmentService.Roll(player, day, count)
+	prepare(player)
+	return rollOffer(player, day, count)
+end
+
+-- 컴퍼니 상점에서 산 증강을 바로 준다(레벨 상한은 CompanyService가 확인)
+function AugmentService.Give(player, id)
+	prepare(player)
+	grant(player, id)
 end
 
 function AugmentService.Reset()

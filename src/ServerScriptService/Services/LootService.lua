@@ -1,4 +1,4 @@
--- 도시 파밍. Workspace.LootSpots의 파츠(속성 Container = Config.Loot의 종류)마다 상자를 놓는다.
+-- 도시 파밍. 각 세상(Workspace.Worlds/<Id>)의 LootSpots 파츠(속성 Container = Config.Loot의 종류)마다 상자를 놓는다.
 -- 파츠의 CFrame이 상자 바닥 중앙이다. ProximityPrompt를 꾹 눌러 뒤지면 Drops에서 아이템을 얻고,
 -- 상자는 비었다가 Respawn초 뒤 다시 채워진다.
 -- 모양: ServerStorage.LootModels/<종류>(피벗이 바닥 중앙, PrimaryPart 없음)가 있으면 그걸, 없으면 아래 파츠를 쓴다.
@@ -11,6 +11,11 @@ local InventoryService = require(script.Parent.InventoryService)
 
 local LootService = {}
 local containers = {} -- [model] = prompt
+
+local scrapMultiplier = {} -- [세상 Id] = 고물 배율
+for _, world in Config.Worlds do
+	scrapMultiplier[world.Id] = world.ScrapMultiplier
+end
 
 local function part(model, props)
 	local p = Instance.new("Part")
@@ -119,6 +124,9 @@ local function search(model, def, player)
 	setLooted(model, true)
 
 	local got = roll(def)
+	if got.Scrap then
+		got.Scrap = math.max(1, math.round(got.Scrap * (scrapMultiplier[model:GetAttribute("World")] or 1)))
+	end
 	-- 약탈자 증강: 나온 아이템 중 하나를 레벨만큼 더
 	local bonus = player:GetAttribute("LootBonus") or 0
 	if bonus > 0 then
@@ -139,9 +147,10 @@ local function search(model, def, player)
 	end)
 end
 
-local function spawnContainer(kind, def, cframe, folder)
+local function spawnContainer(kind, def, cframe, folder, worldId)
 	local model, main = buildModel(kind)
 	model.Name = kind
+	model:SetAttribute("World", worldId)
 	model:PivotTo(cframe)
 
 	local prompt = Instance.new("ProximityPrompt")
@@ -163,21 +172,23 @@ function LootService.Start()
 	folder.Name = "Loot"
 	folder.Parent = workspace
 
-	local spots = workspace:FindFirstChild("LootSpots")
-	if not spots then
-		warn("[LootService] Workspace.LootSpots가 없어 파밍 상자를 놓지 않았습니다")
-		return
-	end
-	for _, spot in spots:GetChildren() do
-		local kind = spot:GetAttribute("Container")
-		local def = kind and Config.Loot[kind]
-		if spot:IsA("BasePart") and def then
-			spawnContainer(kind, def, spot.CFrame, folder)
+	local worlds = workspace:FindFirstChild("Worlds")
+	for _, world in worlds and worlds:GetChildren() or {} do
+		local spots = world:FindFirstChild("LootSpots")
+		for _, spot in spots and spots:GetChildren() or {} do
+			local kind = spot:GetAttribute("Container")
+			local def = kind and Config.Loot[kind]
+			if spot:IsA("BasePart") and def then
+				spawnContainer(kind, def, spot.CFrame, folder, world.Name)
+			end
 		end
+	end
+	if not next(containers) then
+		warn("[LootService] Workspace.Worlds/*/LootSpots가 없어 파밍 상자를 놓지 않았습니다")
 	end
 end
 
--- 새 판: 모든 상자를 다시 채운다.
+-- 출발할 때·새 판: 모든 상자를 다시 채운다.
 function LootService.Reset()
 	for model in containers do
 		setLooted(model, false)

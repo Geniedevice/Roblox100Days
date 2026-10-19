@@ -6,9 +6,16 @@ local Config = require(ReplicatedStorage.Shared.Config)
 
 local BaseService = {}
 
--- 안전가옥 중심 = SpawnLocation 위치(없으면 원점). 좀비 대체 스폰 반경의 기준.
+-- 지금 탐사 중인 세상(Workspace.Worlds/<ActiveWorld>). CompanyService가 workspace 속성 ActiveWorld를 정한다.
+function BaseService.GetWorld()
+	local worlds = workspace:FindFirstChild("Worlds")
+	return worlds and worlds:FindFirstChild(workspace:GetAttribute("ActiveWorld") or "")
+end
+
+-- 안전가옥 중심 = 세상의 Spawn 파츠 위치(없으면 원점). 좀비 대체 스폰 반경의 기준.
 function BaseService.GetCenter()
-	local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
+	local world = BaseService.GetWorld()
+	local spawn = world and world:FindFirstChild("Spawn")
 	return spawn and spawn.Position or Vector3.zero
 end
 

@@ -36,7 +36,7 @@ local gui = make("ScreenGui", { Name = "HUD", ResetOnSpawn = false }, player:Wai
 
 -- 상단: 일차 / 시간
 local dayLabel = make("TextLabel", {
-	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(0, 420, 0, 40),
+	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(0, 560, 0, 40),
 	BackgroundColor3 = DARK, BackgroundTransparency = 0.3, TextColor3 = WHITE,
 	Font = Enum.Font.GothamBold, TextSize = 20, Text = "대기 중...",
 }, gui)
@@ -75,7 +75,7 @@ local setThirst = makeBar(statFrame, "갈증", Color3.fromRGB(70, 160, 230), UDi
 
 -- 인벤토리: 재료 개수와 먹기/마시기/치료 버튼
 local inventoryFrame = make("Frame", {
-	Position = UDim2.new(0, 12, 0, 70), Size = UDim2.new(0, 190, 0, 192), BackgroundTransparency = 1,
+	Position = UDim2.new(0, 12, 0, 70), Size = UDim2.new(0, 220, 0, 192), BackgroundTransparency = 1,
 }, gui)
 make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, inventoryFrame)
 local materialsLabel = make("TextLabel", {
@@ -124,7 +124,7 @@ end
 
 -- 제작 창: 버튼이나 C 키로 연다
 local craftPanel = make("Frame", {
-	Position = UDim2.new(0, 210, 0, 70), Size = UDim2.new(0, 240, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+	Position = UDim2.new(0, 240, 0, 70), Size = UDim2.new(0, 240, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 	BackgroundColor3 = DARK, BackgroundTransparency = 0.2, Visible = false,
 }, gui)
 round(craftPanel)
@@ -339,12 +339,17 @@ end)
 Remotes.GameMessage.OnClientEvent:Connect(showMessage)
 
 RunService.Heartbeat:Connect(function()
-	if currentDay > 0 then
+	if workspace:GetAttribute("Phase") == "Lobby" then
+		local left = math.max(0, math.floor((workspace:GetAttribute("LobbyEndsAt") or 0) - workspace:GetServerTimeNow()))
+		dayLabel.Text = string.format("컴퍼니  ·  크레딧 %d  ·  출발까지 %d:%02d",
+			workspace:GetAttribute("Credits") or 0, left // 60, left % 60)
+	elseif currentDay > 0 then
 		local remaining = math.max(0, math.floor(phaseEndsAt - workspace:GetServerTimeNow()))
 		local best = player:GetAttribute("BestDay") or 0
 		dayLabel.Text = string.format("%d / %d일차  ·  %s %d:%02d%s",
 			currentDay, Config.TOTAL_DAYS, isNight and "밤" or "낮", remaining // 60, remaining % 60,
 			best > 0 and string.format("  ·  최고 %d일", best) or "")
+			.. string.format("  ·  생존비 %d", workspace:GetAttribute("Quota") or 0)
 	end
 
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -355,8 +360,8 @@ RunService.Heartbeat:Connect(function()
 	end
 	setHunger(player:GetAttribute("Hunger") or Config.Survival.Max, Config.Survival.Max)
 	setThirst(player:GetAttribute("Thirst") or Config.Survival.Max, Config.Survival.Max)
-	materialsLabel.Text = string.format("%s %d  ·  %s %d", Config.Items.Wood.Name, player:GetAttribute("Wood") or 0,
-		Config.Items.Stone.Name, player:GetAttribute("Stone") or 0)
+	materialsLabel.Text = string.format("%s %d · %s %d · %s %d", Config.Items.Wood.Name, player:GetAttribute("Wood") or 0,
+		Config.Items.Stone.Name, player:GetAttribute("Stone") or 0, Config.Items.Scrap.Name, player:GetAttribute("Scrap") or 0)
 	refreshEat()
 	refreshDrink()
 	refreshHeal()

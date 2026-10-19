@@ -1,6 +1,6 @@
 -- 모든 좀비를 한 루프에서 갱신한다.
 -- 쫓기: 낮에는 AggroRange, 밤에는 NightAggroRange 안의 가장 가까운 플레이어. 없으면 근처를 배회한다.
--- 이동: 목표까지 Workspace.City(건물)에 막히지 않으면 직선(MoveTo), 막히면 PathfindingService로 돌아간다.
+-- 이동: 목표까지 탐사 중인 세상의 City(건물)에 막히지 않으면 직선(MoveTo), 막히면 PathfindingService로 돌아간다.
 -- 바리케이드는 City가 아니라서 직선으로 들이받고 부순다.
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -23,7 +23,8 @@ local paths = setmetatable({}, { __mode = "k" }) -- [zombie] = { Waypoints, Inde
 local FLAT = Vector3.new(1, 0, 1)
 
 local function isBlocked(from, to)
-	local city = workspace:FindFirstChild("City")
+	local world = BaseService.GetWorld()
+	local city = world and world:FindFirstChild("City")
 	if not city then
 		return false
 	end

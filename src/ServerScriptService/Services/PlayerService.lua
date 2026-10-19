@@ -7,6 +7,7 @@ local AugmentData = require(ReplicatedStorage.Shared.AugmentData)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local CombatService = require(script.Parent.CombatService)
+local BaseService = require(script.Parent.BaseService)
 
 local PlayerService = {}
 
@@ -134,6 +135,11 @@ local function onCharacterAdded(player, character)
 	player:SetAttribute("Thirst", math.max(min, player:GetAttribute("Thirst") or min))
 	PlayerService.ApplyCharacterStats(player)
 	CombatService.GiveWeapon(player)
+	-- 탐사 중에 (다시) 나오면 컴퍼니(SpawnLocation)가 아니라 그 세상 안전가옥에 내린다
+	-- (스폰 위치 배치가 끝난 뒤에 옮겨야 해서 defer)
+	if workspace:GetAttribute("Phase") == "Expedition" then
+		task.defer(character.PivotTo, character, CFrame.new(BaseService.GetCenter() + Vector3.new(math.random(-2, 2), 4, math.random(-2, 2))))
+	end
 end
 
 local function onPlayerAdded(player)

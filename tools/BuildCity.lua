@@ -1,12 +1,15 @@
--- 도시 맵 생성기. Studio 편집 모드에서 실행(execute_luau 또는 Command Bar). 다시 실행하면 City를 새로 만든다.
--- 만드는 것: Workspace.City(도로·인도·건물·가로등·공원), Workspace.LootSpots(파밍 상자 위치, 속성 Container),
--- Workspace.ZombieSpawns(좀비 스폰 위치), SpawnLocation(중앙 안전가옥)
+-- 도시 맵 생성기. Studio 편집 모드에서 실행: loadstring(src)(Config.Worlds의 항목). 다시 실행하면 그 세상을 새로 만든다.
+-- 만드는 것: Workspace.Worlds/<Id>(Model) 안에 City(도로·인도·건물·가로등·공원), LootSpots(파밍 상자 위치, 속성 Container),
+-- ZombieSpawns(좀비 스폰 위치), Spawn(중앙 안전가옥, 출발하면 여기로 내린다). 원점에서 지은 뒤 Origin으로 옮긴다.
 -- 건물: ServerStorage.CityKit.Buildings의 Modern City 템플릿(Roblox 공식 Modular Building Kit, 1층 출입구를 연 것)을
 -- 놓고, 안에 1~3층 바닥·계단·실내 벽·조명·파밍 상자를 만든다. 4층 위는 막혀 있다.
 -- 공원 나무는 ServerStorage.CityKit.Tree를 쓴다.
 local ServerStorage = game:GetService("ServerStorage")
 
-local SEED = 100
+local args = ... or {}
+local WORLD_ID = args.Id or "Ruins"
+local ORIGIN = args.Origin or Vector3.zero
+local SEED = args.Seed or 100
 local GRID = 2 -- 블록 인덱스 -GRID..GRID (5x5)
 local PITCH = 96 -- 블록 중심 간격
 local ROAD = 24
@@ -28,12 +31,16 @@ local trees = kit:FindFirstChild("Tree")
 
 local rng = Random.new(SEED)
 
-for _, name in { "City", "LootSpots", "ZombieSpawns" } do
-	local old = workspace:FindFirstChild(name)
-	if old then
-		old:Destroy()
-	end
+local worlds = workspace:FindFirstChild("Worlds") or Instance.new("Folder")
+worlds.Name = "Worlds"
+worlds.Parent = workspace
+if worlds:FindFirstChild(WORLD_ID) then
+	worlds[WORLD_ID]:Destroy()
 end
+local world = Instance.new("Model")
+world.Name = WORLD_ID
+world.WorldPivot = CFrame.new()
+world.Parent = worlds
 
 local function folder(name, parent)
 	local f = Instance.new("Folder")
@@ -41,9 +48,9 @@ local function folder(name, parent)
 	f.Parent = parent
 	return f
 end
-local city = folder("City", workspace)
-local lootSpots = folder("LootSpots", workspace)
-local zombieSpawns = folder("ZombieSpawns", workspace)
+local city = folder("City", world)
+local lootSpots = folder("LootSpots", world)
+local zombieSpawns = folder("ZombieSpawns", world)
 
 local function part(parent, size, cframe, color, material, props)
 	local p = Instance.new("Part")
@@ -84,7 +91,10 @@ end
 
 -- 맵 안쪽의 언덕을 걷어 낸다(지면 위만)
 local extent = (GRID + 0.5) * PITCH + ROAD / 2
-workspace.Terrain:FillBlock(CFrame.new(0, GROUND + 32, 0), Vector3.new(extent * 2 + 40, 60, extent * 2 + 40), Enum.Material.Air)
+workspace.Terrain:FillBlock(CFrame.new(ORIGIN + Vector3.new(0, GROUND + 32, 0)), Vector3.new(extent * 2 + 40, 60, extent * 2 + 40), Enum.Material.Air)
+
+-- 도시 밖 맨땅(지형이 없는 세상에서도 떨어지지 않게)
+part(city, Vector3.new(extent * 2 + 400, 2, extent * 2 + 400), CFrame.new(0, GROUND - 1.8, 0), Color3.fromRGB(85, 80, 72), Enum.Material.Ground).Name = "Ground"
 
 -- 도로(전체 아스팔트 한 장)
 part(city, Vector3.new(extent * 2, 1, extent * 2), CFrame.new(0, GROUND - 0.3, 0), Color3.fromRGB(45, 45, 50), Enum.Material.Asphalt).Name = "Road"
@@ -241,10 +251,9 @@ for bx = -GRID, GRID do
 				part(blockFolder, Vector3.new(12, h, 1), CFrame.new(cx + sx * 14, WALK + h / 2, cz + 20), wallColor, Enum.Material.Brick)
 			end
 			marker(lootSpots, "Spot", CFrame.new(cx - 15, WALK + 0.2, cz - 15), "Crate")
-			local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
-			if spawn then
-				spawn.Position = Vector3.new(cx, WALK + spawn.Size.Y / 2, cz)
-			end
+			part(world, Vector3.new(6, 0.2, 6), CFrame.new(cx, WALK + 0.1, cz), Color3.fromRGB(90, 160, 220), Enum.Material.Neon, {
+				Name = "Spawn", CanCollide = false, CanQuery = false, CanTouch = false, Transparency = 0.6,
+			})
 		elseif bx == PARK.X and bz == PARK.Y then
 			-- 공원: 잔디 + 나무 + 상자
 			part(blockFolder, Vector3.new(BLOCK - 6, 0.2, BLOCK - 6), CFrame.new(cx, WALK + 0.1, cz), Color3.fromRGB(80, 130, 60), Enum.Material.Grass)
@@ -305,6 +314,8 @@ for i = -GRID - 1, GRID do
 	end
 end
 
+world:PivotTo(CFrame.new(ORIGIN))
+
 local counts = {}
 for _, spot in lootSpots:GetChildren() do
 	local kind = spot:GetAttribute("Container")
@@ -320,4 +331,4 @@ for _, d in city:GetDescendants() do
 		partCount += 1
 	end
 end
-return ("city parts=%d, loot %s, zombie spawns=%d"):format(partCount, table.concat(summary, " "), #zombieSpawns:GetChildren())
+return (WORLD_ID .. " city parts=%d, loot %s, zombie spawns=%d"):format(partCount, table.concat(summary, " "), #zombieSpawns:GetChildren())

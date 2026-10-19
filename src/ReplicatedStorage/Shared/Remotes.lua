@@ -15,6 +15,13 @@ local DEFINITIONS = {
 	Reload = "RemoteEvent",
 	SwingFx = "RemoteEvent", -- 서버 → 모든 클라이언트: 이 캐릭터가 근접 무기를 휘두른다
 	HitMarker = "RemoteEvent", -- 서버 → 쏜 사람: 맞혔다
+	-- 컴퍼니
+	Buy = "RemoteFunction", -- (종류 "Equipment"|"Augment", Id) → 성공, 문구
+	RerollShop = "RemoteFunction",
+	ShopOffers = "RemoteEvent", -- 서버 → 플레이어: 이번에 살 수 있는 증강 Id 목록
+	OpenShop = "RemoteEvent", -- 서버 → 플레이어: 단말기를 눌렀다
+	SelectWorld = "RemoteEvent", -- 다음에 갈 세상 Id
+	Launch = "RemoteEvent", -- 출발 레버
 }
 
 local folder

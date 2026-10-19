@@ -1,4 +1,4 @@
--- 이어하기. 매일 아침 판 전체를 방장 키로 저장하고, 같은 방장이 다시 시작하면 그날부터 이어 한다.
+-- 이어하기. 기간마다 컴퍼니에 있을 때 판 전체를 방장 키로 저장하고, 같은 방장이 다시 시작하면 그 기간부터 이어 한다.
 -- 방장 = 비공개 서버 주인, 없으면 판을 시작할 때 가장 먼저 들어와 있던 플레이어.
 -- 지거나 100일을 깨면 저장을 지운다. 파밍 상자 상태와 좀비는 저장하지 않는다(새 판이면 상자는 다시 차고 좀비는 아침에 새로 나온다).
 local Players = game:GetService("Players")
@@ -66,7 +66,10 @@ end
 
 -- 저장될 표(숫자·문자열 키만). 테스트에서도 직접 부른다.
 function RunSaveService.Snapshot(day)
-	local snapshot = { Day = day, Base = BaseService.Export(), Players = {} }
+	local snapshot = {
+		Day = day, Base = BaseService.Export(), Players = {},
+		Credits = workspace:GetAttribute("Credits"), NextWorld = workspace:GetAttribute("NextWorld"),
+	}
 	for _, player in Players:GetPlayers() do
 		snapshot.Players[tostring(player.UserId)] = exportPlayer(player)
 	end
@@ -76,6 +79,8 @@ end
 -- 바리케이드를 되돌리고, 지금 있는 플레이어는 바로, 나중에 들어오는 플레이어는 접속할 때 복원한다.
 function RunSaveService.Apply(snapshot)
 	BaseService.Import(snapshot.Base)
+	workspace:SetAttribute("Credits", snapshot.Credits or workspace:GetAttribute("Credits"))
+	workspace:SetAttribute("NextWorld", snapshot.NextWorld or workspace:GetAttribute("NextWorld"))
 	table.clear(pendingPlayers)
 	for userId, data in snapshot.Players do
 		pendingPlayers[userId] = data
@@ -109,7 +114,7 @@ function RunSaveService.Begin()
 	return snapshot.Day
 end
 
--- 매일 아침 부른다. 저장은 뒤에서 하고 바로 돌아온다.
+-- 기간마다 컴퍼니에서 부른다. 저장은 뒤에서 하고 바로 돌아온다.
 function RunSaveService.Save(day)
 	local store = DataService.GetStore()
 	if not store or not hostKey then

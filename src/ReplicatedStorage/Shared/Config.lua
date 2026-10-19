@@ -1,10 +1,53 @@
--- 모든 밸런스 수치. 테스트할 때는 DAY_LENGTH / NIGHT_LENGTH / Augment.EveryDays를 줄이면 빠르다.
--- 게임: 도시 아포칼립스. 낮에 도시를 뒤져 파밍하고, 밤에는 몰려오는 좀비를 버틴다. 날이 갈수록 좀비가 많고 강해진다.
+-- 모든 밸런스 수치. 테스트할 때는 DAY_LENGTH / NIGHT_LENGTH / Company.LobbyTime을 줄이면 빠르다.
+-- 게임: 컴퍼니 소속 생존자들이 여러 세상(탐사지)을 돌며 100일을 버틴다. 한 생존 기간(PeriodDays일)마다
+-- 세상에서 파밍하며 살아남고, 컴퍼니로 돌아와 고물을 팔아 생존비를 내고, 남은 크레딧으로 장비·증강을 산다.
 local Config = {}
 
 Config.TOTAL_DAYS = 100
-Config.DAY_LENGTH = 240 -- 초
-Config.NIGHT_LENGTH = 180 -- 초
+Config.DAY_LENGTH = 45 -- 초 (시간이 빨리 간다)
+Config.NIGHT_LENGTH = 30 -- 초
+
+-- 컴퍼니: 기간 n이 끝나면 생존비 = FirstQuota + QuotaStep x (n - 1)을 내야 한다(못 내면 해고 = 처음부터)
+Config.Company = {
+	PeriodDays = 5,
+	StartCredits = 60,
+	ScrapValue = 10, -- 고물 1개 판매가
+	FirstQuota = 120,
+	QuotaStep = 60,
+	LobbyTime = 90, -- 컴퍼니에서 출발까지 최대 대기(초). 누군가 출발 레버를 당기면 바로 출발
+	Origin = Vector3.new(0, 0, -2500), -- 컴퍼니 위치(tools/BuildCompany.lua)
+	Atmosphere = { Density = 0.25, Color = Color3.fromRGB(200, 210, 220), Haze = 0 },
+}
+
+-- 탐사할 세상. Id는 Workspace.Worlds 아래 폴더 이름(tools/BuildCity.lua로 생성), 첫 번째가 기본.
+-- TravelCost = 출발할 때 내는 크레딧, ZombieMultiplier = 좀비 수·체력 배율, ScrapMultiplier = 고물 배율
+Config.Worlds = {
+	{
+		Id = "Ruins", Name = "폐허 도시", Origin = Vector3.new(0, 0, 0), Seed = 100,
+		TravelCost = 0, ZombieMultiplier = 1, ScrapMultiplier = 1,
+		Atmosphere = { Density = 0.3, Color = Color3.fromRGB(199, 199, 199), Haze = 0 },
+	},
+	{
+		Id = "Ashen", Name = "잿빛 구역", Origin = Vector3.new(3000, 0, 0), Seed = 777,
+		TravelCost = 40, ZombieMultiplier = 1.5, ScrapMultiplier = 1.8,
+		Atmosphere = { Density = 0.55, Color = Color3.fromRGB(150, 120, 110), Haze = 2.5 },
+	},
+}
+
+-- 컴퍼니 상점. 장비는 산 사람이 받고, 증강은 플레이어마다 AugmentOffers개를 제시한다. 크레딧은 팀 공용.
+Config.Shop = {
+	Equipment = {
+		{ Id = "Crossbow", Name = "석궁", Price = 60, Weapon = "Crossbow" },
+		{ Id = "Rifle", Name = "소총", Price = 150, Weapon = "Rifle" },
+		{ Id = "Ammo", Name = "탄약 30발", Price = 30, Items = { Ammo = 30 } },
+		{ Id = "Medkit", Name = "구급상자 2개", Price = 25, Items = { Medkit = 2 } },
+		{ Id = "Supplies", Name = "통조림·생수 3개씩", Price = 20, Items = { Food = 3, Water = 3 } },
+		{ Id = "Materials", Name = "목재·고철 10개씩", Price = 35, Items = { Wood = 10, Stone = 10 } },
+	},
+	AugmentPrice = { Silver = 40, Gold = 90, Prism = 160 },
+	AugmentOffers = 4,
+	RerollPrice = 15,
+}
 
 -- 마릿수 = Base + 일차 x PerDay. 낮에는 도시를 배회하고, 밤에는 무리로 플레이어를 쫓는다.
 Config.Wave = {
@@ -88,26 +131,28 @@ Config.Items = {
 	Water = { Name = "생수", Thirst = 35 },
 	Medkit = { Name = "구급상자", Heal = 40 },
 	Ammo = { Name = "탄약" }, -- 소총 재장전에 쓴다
+	Scrap = { Name = "고물" }, -- 컴퍼니로 돌아가면 크레딧으로 팔린다
 }
 
--- 파밍 상자. Workspace.LootSpots의 파츠(속성 Container = 아래 이름)마다 놓인다.
--- 뒤지면 Drops마다 Min~Max개(0이면 안 나옴)를 얻고, Respawn초 뒤 다시 채워진다.
+-- 파밍 상자. 각 세상의 LootSpots 파츠(속성 Container = 아래 이름)마다 놓인다.
+-- 뒤지면 Drops마다 Min~Max개(0이면 안 나옴)를 얻고, Respawn초 뒤 다시 채워진다. 고물은 세상의 ScrapMultiplier만큼 늘어난다.
+-- 출발할 때마다 모든 상자가 다시 채워진다.
 Config.Loot = {
 	Crate = {
 		Label = "나무 상자", HoldTime = 1.5, Respawn = 90,
-		Drops = { { Item = "Wood", Min = 2, Max = 4 }, { Item = "Stone", Min = 0, Max = 2 }, { Item = "Ammo", Min = 0, Max = 3 } },
+		Drops = { { Item = "Wood", Min = 2, Max = 4 }, { Item = "Stone", Min = 0, Max = 2 }, { Item = "Ammo", Min = 0, Max = 3 }, { Item = "Scrap", Min = 0, Max = 2 } },
 	},
 	Fridge = {
 		Label = "냉장고", HoldTime = 1, Respawn = 120,
-		Drops = { { Item = "Food", Min = 1, Max = 2 }, { Item = "Water", Min = 1, Max = 2 } },
+		Drops = { { Item = "Food", Min = 1, Max = 2 }, { Item = "Water", Min = 1, Max = 2 }, { Item = "Scrap", Min = 0, Max = 1 } },
 	},
 	Medical = {
 		Label = "구급함", HoldTime = 1, Respawn = 180,
-		Drops = { { Item = "Medkit", Min = 1, Max = 1 }, { Item = "Water", Min = 0, Max = 1 } },
+		Drops = { { Item = "Medkit", Min = 1, Max = 1 }, { Item = "Water", Min = 0, Max = 1 }, { Item = "Scrap", Min = 0, Max = 1 } },
 	},
 	Car = {
 		Label = "버려진 차", HoldTime = 2.5, Respawn = 150,
-		Drops = { { Item = "Stone", Min = 2, Max = 4 }, { Item = "Food", Min = 0, Max = 1 }, { Item = "Medkit", Min = 0, Max = 1 }, { Item = "Ammo", Min = 0, Max = 6 } },
+		Drops = { { Item = "Scrap", Min = 1, Max = 3 }, { Item = "Stone", Min = 2, Max = 4 }, { Item = "Food", Min = 0, Max = 1 }, { Item = "Medkit", Min = 0, Max = 1 }, { Item = "Ammo", Min = 0, Max = 6 } },
 	},
 }
 
@@ -131,6 +176,7 @@ Config.Barricade = { PlaceDistance = 6 } -- 플레이어 앞 몇 스터드에 �
 -- 저장. 구조를 바꾸면 StoreName 버전을 올린다.
 Config.Data = { StoreName = "ZombieSurvival100_v1" }
 
+-- 증강은 컴퍼니 상점에서 산다. 아래는 제시 확률과, 판 중간에 들어온 플레이어가 놓친 기간만큼 무료로 고르는 수(EveryDays일마다 1개).
 Config.Augment = {
 	EveryDays = 5,
 	PickTime = 30,

@@ -38,6 +38,9 @@ function SurvivalStats.Start()
 	task.spawn(function()
 		while true do
 			task.wait(1)
+			if workspace:GetAttribute("Phase") == "Lobby" then
+				continue -- 컴퍼니에서는 배고프지 않다
+			end
 			for _, player in Players:GetPlayers() do
 				tick(player)
 			end

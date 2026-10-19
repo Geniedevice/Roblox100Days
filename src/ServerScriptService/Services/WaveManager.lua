@@ -124,9 +124,21 @@ local function nearPlayer(position)
 	return false
 end
 
--- Workspace.ZombieSpawns 중 플레이어와 떨어진 곳에서 고른다(모두 가까우면 아무 곳이나).
+-- 탐사 중인 세상의 배율(Config.Worlds의 ZombieMultiplier)
+local function worldMultiplier()
+	local id = workspace:GetAttribute("ActiveWorld")
+	for _, world in Config.Worlds do
+		if world.Id == id then
+			return world.ZombieMultiplier
+		end
+	end
+	return 1
+end
+
+-- 탐사 중인 세상의 ZombieSpawns 중 플레이어와 떨어진 곳에서 고른다(모두 가까우면 아무 곳이나).
 local function randomSpawnPosition()
-	local spawns = workspace:FindFirstChild("ZombieSpawns")
+	local world = BaseService.GetWorld()
+	local spawns = world and world:FindFirstChild("ZombieSpawns")
 	local far, all = {}, {}
 	if spawns then
 		for _, child in spawns:GetChildren() do
@@ -160,7 +172,7 @@ local function spawnZombie(typeName, day)
 		return
 	end
 
-	humanoid.MaxHealth = stats.Health * (1 + day * Config.Wave.HealthScalePerDay)
+	humanoid.MaxHealth = stats.Health * (1 + day * Config.Wave.HealthScalePerDay) * worldMultiplier()
 	humanoid.Health = humanoid.MaxHealth
 	humanoid.WalkSpeed = stats.Speed
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
@@ -221,8 +233,8 @@ function WaveManager.Spawn(day, isNight)
 	end
 
 	local wave = Config.Wave
-	local count = isNight and math.floor(wave.BaseCount + day * wave.CountPerDay)
-		or math.floor(wave.DayBase + day * wave.DayPerDay)
+	local count = math.floor((isNight and wave.BaseCount + day * wave.CountPerDay or wave.DayBase + day * wave.DayPerDay)
+		* worldMultiplier())
 	for _ = 1, count do
 		while #CollectionService:GetTagged("Zombie") >= Config.Wave.MaxAlive do
 			task.wait(0.5)
