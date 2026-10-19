@@ -16,6 +16,8 @@ local spawnToken = 0
 
 local walkAnimation = Instance.new("Animation")
 walkAnimation.AnimationId = Config.ZombieAI.WalkAnimation
+local walkAnimationR6 = Instance.new("Animation")
+walkAnimationR6.AnimationId = Config.ZombieAI.WalkAnimationR6
 
 -- 서버에서 도는 Animate 스크립트가 없는 모델에 걷기 애니메이션을 붙인다.
 -- 기본 좀비에 딸려 오는 Animate는 LocalScript라 서버 소유 NPC에서는 실행되지 않는다.
@@ -25,7 +27,8 @@ local function addWalkAnimation(zombie, humanoid)
 		return
 	end
 	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
-	local walk = animator:LoadAnimation(walkAnimation)
+	local isR6 = humanoid.RigType == Enum.HumanoidRigType.R6
+	local walk = animator:LoadAnimation(isR6 and walkAnimationR6 or walkAnimation)
 	humanoid.Running:Connect(function(speed)
 		if speed > 0.5 then
 			if not walk.IsPlaying then
@@ -131,6 +134,20 @@ local function spawnZombie(typeName, day)
 
 	if stats.Scale ~= 1 then
 		zombie:ScaleTo(stats.Scale)
+	end
+	if stats.Tint then
+		local colors = zombie:FindFirstChildOfClass("BodyColors")
+		if colors then
+			for _, limb in { "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" } do
+				colors[limb .. "Color3"] = stats.Tint
+			end
+		else
+			for _, part in zombie:GetDescendants() do
+				if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+					part.Color = stats.Tint
+				end
+			end
+		end
 	end
 	zombie:SetAttribute("Type", typeName)
 	zombie:SetAttribute("Damage", stats.Damage)

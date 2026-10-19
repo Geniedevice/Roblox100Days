@@ -47,7 +47,7 @@ function BaseService.Damage(amount)
 	local c = BaseService.GetCore()
 	local health = math.max(0, (c:GetAttribute("Health") or 0) - amount)
 	c:SetAttribute("Health", health)
-	if health <= 0 and c:IsA("BasePart") then
+	if health <= 0 and c.ClassName == "Part" then -- 임시 코어만 색으로 표시(메시 코어는 텍스처 유지)
 		c.Color = Color3.fromRGB(40, 40, 40)
 	end
 end
@@ -165,7 +165,7 @@ function BaseService.Reset()
 	local c = BaseService.GetCore()
 	c:SetAttribute("MaxHealth", Config.Core.MaxHealth)
 	c:SetAttribute("Health", Config.Core.MaxHealth)
-	if c:IsA("BasePart") then
+	if c.ClassName == "Part" then
 		c.Color = Color3.fromRGB(80, 170, 255)
 	end
 	getBarricadeFolder():ClearAllChildren()

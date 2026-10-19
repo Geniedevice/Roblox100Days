@@ -2,6 +2,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local AugmentData = require(ReplicatedStorage.Shared.AugmentData)
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local CombatService = require(script.Parent.CombatService)
@@ -10,7 +11,7 @@ local PlayerService = {}
 
 local AUGMENT_ATTRIBUTES = {
 	"DamageBonus", "HungerReduction", "ThirstReduction", "SpeedBonus", "DamageReduction",
-	"BarricadeBonus", "LifeOnKill", "AttackSpeedBonus", "MaxHealthBonus", "ExplodeOnKill",
+	"BarricadeBonus", "LifeOnKill", "AttackSpeedBonus", "MaxHealthBonus", "ExplodeDamage",
 	"UndyingCharges", "FoodOnKill",
 }
 
@@ -22,6 +23,9 @@ end
 function PlayerService.ResetAttributes(player)
 	for _, attribute in AUGMENT_ATTRIBUTES do
 		player:SetAttribute(attribute, nil)
+	end
+	for id in AugmentData do
+		player:SetAttribute("Aug_" .. id, nil) -- 증강 레벨(HUD 표시용)
 	end
 	for item in Config.Items do
 		player:SetAttribute(item, nil)

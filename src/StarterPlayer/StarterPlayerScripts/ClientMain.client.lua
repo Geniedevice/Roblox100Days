@@ -271,10 +271,12 @@ local function makeCard(id)
 	}, cardRow)
 	round(card, 10)
 	make("UIStroke", { Color = rarity.Color, Thickness = 2 }, card)
+	local level = player:GetAttribute("Aug_" .. id) or 0
 	make("TextLabel", {
 		Position = UDim2.new(0, 10, 0, 10), Size = UDim2.new(1, -20, 0, 20), BackgroundTransparency = 1,
 		TextColor3 = rarity.Color, Font = Enum.Font.GothamBold, TextSize = 14,
-		Text = rarity.Label .. " · " .. data.Category,
+		Text = string.format("%s · %s · %s", rarity.Label, data.Category,
+			level == 0 and "새 증강" or string.format("Lv.%d → %d", level, level + 1)),
 	}, card)
 	make("TextLabel", {
 		Position = UDim2.new(0, 10, 0, 34), Size = UDim2.new(1, -20, 0, 34), BackgroundTransparency = 1,
@@ -311,8 +313,40 @@ end)
 Remotes.AugmentClosed.OnClientEvent:Connect(function(id)
 	picker.Visible = false
 	clearCards()
-	showMessage(AugmentData[id].Name .. " 획득!")
+	showMessage(string.format("%s Lv.%d!", AugmentData[id].Name, player:GetAttribute("Aug_" .. id) or 1))
 end)
+
+-- 보유 증강 목록(오른쪽): 레벨이 바뀔 때마다 다시 그린다
+local ownedFrame = make("Frame", {
+	AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 190), Size = UDim2.new(0, 170, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1,
+}, gui)
+make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, ownedFrame)
+
+local function refreshOwned()
+	for _, child in ownedFrame:GetChildren() do
+		if child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
+	for id, data in AugmentData do
+		local level = player:GetAttribute("Aug_" .. id)
+		if level then
+			local label = make("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = DARK, BackgroundTransparency = 0.35,
+				TextColor3 = RARITY[data.Rarity].Color, Font = Enum.Font.GothamBold, TextSize = 13,
+				Text = string.format("%s  %s", data.Name, level >= data.MaxStack and "MAX" or ("Lv." .. level)),
+			}, ownedFrame)
+			round(label, 6)
+		end
+	end
+end
+player.AttributeChanged:Connect(function(name)
+	if name:sub(1, 4) == "Aug_" then
+		refreshOwned()
+	end
+end)
+refreshOwned()
 
 rerollButton.Activated:Connect(function()
 	if busy then

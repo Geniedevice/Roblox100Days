@@ -1,6 +1,9 @@
 -- 자원 노드(나무·바위·열매 덤불·웅덩이)를 코어 주변에 흩어 놓는다.
 -- ProximityPrompt를 꾹 누르면 채집되어 사라지고, Config의 Respawn초 뒤 다시 생긴다.
+-- 모양: ServerStorage.ResourceModels에 같은 이름의 모델(또는 변형 여러 개가 든 Folder)이 있으면 그걸,
+-- 없으면 아래 임시 파츠를 쓴다. 넣는 모델은 피벗이 바닥 중앙이고 PrimaryPart가 없어야 한다.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local BaseService = require(script.Parent.BaseService)
@@ -83,11 +86,27 @@ local function harvest(model, def, player)
 	end)
 end
 
-local function spawnNode(typeName, def, position)
+-- 반환: 모델, 프롬프트를 붙일 파츠
+local function buildModel(typeName)
+	local models = ServerStorage:FindFirstChild("ResourceModels")
+	local source = models and models:FindFirstChild(typeName)
+	if source then
+		if source:IsA("Folder") then
+			local variants = source:GetChildren()
+			source = variants[math.random(#variants)]
+		end
+		local model = source:Clone()
+		return model, model:FindFirstChildWhichIsA("BasePart", true)
+	end
 	local model = Instance.new("Model")
-	model.Name = typeName
 	local main = BUILDERS[typeName](model)
 	model.WorldPivot = CFrame.new()
+	return model, main
+end
+
+local function spawnNode(typeName, def, position)
+	local model, main = buildModel(typeName)
+	model.Name = typeName
 	model:PivotTo(CFrame.new(position) * CFrame.Angles(0, math.random() * math.pi * 2, 0))
 
 	local prompt = Instance.new("ProximityPrompt")

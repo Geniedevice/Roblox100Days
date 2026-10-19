@@ -2,6 +2,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -28,6 +29,21 @@ local function createTool(name, size, color)
 	handle.Massless = true
 	handle.Parent = tool
 
+	-- ServerStorage.WeaponModels/<이름>이 있으면 손잡이를 숨기고 그 메시를 붙인다(Offset 속성 = 손잡이 기준 회전)
+	local models = ServerStorage:FindFirstChild("WeaponModels")
+	local template = models and models:FindFirstChild(name)
+	if template then
+		local visual = template:Clone()
+		visual.Name = "Visual"
+		visual.CFrame = handle.CFrame * (template:GetAttribute("Offset") or CFrame.new())
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = handle
+		weld.Part1 = visual
+		weld.Parent = visual
+		visual.Parent = tool
+		handle.Transparency = 1
+	end
+
 	return tool
 end
 
@@ -49,7 +65,8 @@ local function onKilled(zombie, player)
 		player:SetAttribute("Thirst", math.min(max, (player:GetAttribute("Thirst") or max) + food))
 	end
 
-	if player:GetAttribute("ExplodeOnKill") then
+	local explodeDamage = player:GetAttribute("ExplodeDamage") or 0
+	if explodeDamage > 0 then
 		local root = zombie:FindFirstChild("HumanoidRootPart")
 		if root then
 			local position = root.Position
@@ -64,7 +81,7 @@ local function onKilled(zombie, player)
 				for _, other in CollectionService:GetTagged("Zombie") do
 					local otherRoot = other:FindFirstChild("HumanoidRootPart")
 					if otherRoot and (otherRoot.Position - position).Magnitude <= 10 then
-						CombatService.DamageZombie(other, 50, player)
+						CombatService.DamageZombie(other, explodeDamage, player)
 					end
 				end
 			end)

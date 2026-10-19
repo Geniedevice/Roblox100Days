@@ -10,6 +10,7 @@ local AugmentService = require(script.Parent.AugmentService)
 local BaseService = require(script.Parent.BaseService)
 local CombatService = require(script.Parent.CombatService)
 local DataService = require(script.Parent.DataService)
+local DayManager = require(script.Parent.DayManager)
 
 local RunSaveService = {}
 local hostKey
@@ -44,6 +45,21 @@ local function importPlayer(player, data)
 	end
 end
 
+-- 판 도중 합류: 저장된 데이터가 있으면 복원, 없으면 놓친 증강 선택을 몰아서 준다.
+local function join(player, day)
+	local key = tostring(player.UserId)
+	local data = pendingPlayers[key]
+	if data then
+		pendingPlayers[key] = nil
+		importPlayer(player, data)
+		return
+	end
+	local missed = AugmentService.CatchUp(player, day)
+	if missed > 0 then
+		Remotes.GameMessage:FireClient(player, string.format("%d일차 합류! 놓친 증강 %d개를 고르세요", day, missed))
+	end
+end
+
 -- 저장될 표(숫자·문자열 키만). 테스트에서도 직접 부른다.
 function RunSaveService.Snapshot(day)
 	local snapshot = { Day = day, Base = BaseService.Export(), Players = {} }
@@ -61,11 +77,7 @@ function RunSaveService.Apply(snapshot)
 		pendingPlayers[userId] = data
 	end
 	for _, player in Players:GetPlayers() do
-		local key = tostring(player.UserId)
-		if pendingPlayers[key] then
-			importPlayer(player, pendingPlayers[key])
-			pendingPlayers[key] = nil
-		end
+		join(player, snapshot.Day)
 	end
 end
 
@@ -123,10 +135,9 @@ end
 
 function RunSaveService.Start()
 	Players.PlayerAdded:Connect(function(player)
-		local key = tostring(player.UserId)
-		if pendingPlayers[key] then
-			importPlayer(player, pendingPlayers[key])
-			pendingPlayers[key] = nil
+		if DayManager.Day > 0 then
+			Remotes.GameMessage:FireAllClients(player.DisplayName .. "님이 합류했습니다")
+			join(player, DayManager.Day)
 		end
 	end)
 end

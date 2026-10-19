@@ -17,9 +17,10 @@ Config.Wave = {
 
 Config.Zombies = {
 	Normal = { MinDay = 1, Weight = 10, Health = 100, Speed = 10, Damage = 10, Scale = 1 },
-	Runner = { MinDay = 10, Weight = 5, Health = 60, Speed = 18, Damage = 6, Scale = 0.9 },
-	Tank = { MinDay = 25, Weight = 2, Health = 400, Speed = 7, Damage = 25, Scale = 1.4 },
-	Boss = { Health = 2000, Speed = 9, Damage = 40, Scale = 2 },
+	-- Tint: 같은 모델을 쓸 때 종류를 구분하는 몸 색
+	Runner = { MinDay = 10, Weight = 5, Health = 60, Speed = 18, Damage = 6, Scale = 0.9, Tint = Color3.fromRGB(190, 180, 80) },
+	Tank = { MinDay = 25, Weight = 2, Health = 400, Speed = 7, Damage = 25, Scale = 1.4, Tint = Color3.fromRGB(80, 85, 95) },
+	Boss = { Health = 2000, Speed = 9, Damage = 40, Scale = 2, Tint = Color3.fromRGB(140, 30, 30) },
 }
 
 Config.ZombieAI = {
@@ -28,6 +29,7 @@ Config.ZombieAI = {
 	AttackRange = 5,
 	AttackCooldown = 1,
 	WalkAnimation = "rbxassetid://507777826", -- Roblox 기본 R15 걷기
+	WalkAnimationR6 = "rbxassetid://180426354", -- Roblox 기본 R6 걷기 (ZombieModels의 R6 좀비용)
 }
 
 -- 보스 내려찍기: 쿨다운마다 반경 안 플레이어에게 피해
