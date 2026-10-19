@@ -2,9 +2,11 @@
 
 Existing remote: https://github.com/Geniedevice/Roblox100Days.git
 
-## Open the existing game
+## The game
 
-Open CopyOf100days in Roblox Studio, then use File > Save to File / Save to File As to save it in this repository as CopyOf100days.rbxlx (XML preferred for Git) or CopyOf100days.rbxl. The original game has not yet been located or imported. Keep a separate original backup before editing.
+`Copy of 100 Days.rbxl` is the place file: a 100-day co-op zombie survival game built from the Claude Desktop design doc (stages 1-6). It started as an empty Baseplate; the pre-edit copy is in `backups/` (gitignored).
+
+`src/` mirrors every script in the place (file name without `.lua` / `.server.lua` / `.client.lua` = instance name). Edit both together and save the place (Ctrl+S) before committing. Not published yet (PlaceId 0), so DataStore saving is skipped in Studio.
 
 ## MCP
 
@@ -12,10 +14,6 @@ Studio: Assistant > ... > Manage MCP Servers > Enable Studio as MCP server.
 Claude Code: run `claude` from this repository and approve the project MCP if prompted. `.mcp.json` contains the official Windows Studio launcher.
 Codex: Roblox_Studio was registered in the user MCP configuration. Restart the client to load newly registered tools. Open this repository as the working project before editing it.
 Only one AI should edit the Studio session at a time. Changes through Studio MCP must be saved to the local place file to appear in Git.
-
-## Connection status at setup
-
-The installed Studio MCP proxy responded to initialize, but tools/list returned an empty list after waiting. An active game and the Studio MCP toggle still need verification. Do not treat registration as a verified game connection.
 
 ## Development sequence
 
