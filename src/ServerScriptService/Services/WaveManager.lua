@@ -168,6 +168,11 @@ local function spawnZombie(typeName, day)
 	zombie:SetAttribute("Damage", stats.Damage)
 	zombie:SetAttribute("Scale", stats.Scale)
 
+	for _, part in zombie:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = "Zombies" -- 플레이어와는 서로 통과(PlayerService에서 설정)
+		end
+	end
 	zombie:PivotTo(CFrame.new(randomSpawnPosition()))
 	zombie.Parent = getFolder()
 

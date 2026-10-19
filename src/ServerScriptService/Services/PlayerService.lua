@@ -1,4 +1,5 @@
 -- 플레이어 스폰, 증강 스탯 적용, 피해 처리. 죽으면 다음 날 아침에 부활한다.
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -112,8 +113,19 @@ function PlayerService.ResetAll()
 	end
 end
 
+-- 캐릭터 파츠를 "Players" 충돌 그룹에 넣는다(좀비 무리에 밀려 날아가지 않게, WaveManager가 좀비를 "Zombies"로).
+local function setPlayerGroup(part)
+	if part:IsA("BasePart") then
+		part.CollisionGroup = "Players"
+	end
+end
+
 local function onCharacterAdded(player, character)
 	character:WaitForChild("Humanoid")
+	for _, part in character:GetDescendants() do
+		setPlayerGroup(part)
+	end
+	character.DescendantAdded:Connect(setPlayerGroup)
 	local min = Config.Survival.RespawnMin
 	player:SetAttribute("Hunger", math.max(min, player:GetAttribute("Hunger") or min))
 	player:SetAttribute("Thirst", math.max(min, player:GetAttribute("Thirst") or min))
@@ -130,6 +142,13 @@ local function onPlayerAdded(player)
 end
 
 function PlayerService.Start()
+	for _, group in { "Players", "Zombies" } do
+		if not PhysicsService:IsCollisionGroupRegistered(group) then
+			PhysicsService:RegisterCollisionGroup(group)
+		end
+	end
+	PhysicsService:CollisionGroupSetCollidable("Players", "Zombies", false)
+
 	Players.CharacterAutoLoads = false
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(CombatService.ForgetPlayer)
