@@ -1,6 +1,6 @@
 -- 이어하기. 매일 아침 판 전체를 방장 키로 저장하고, 같은 방장이 다시 시작하면 그날부터 이어 한다.
 -- 방장 = 비공개 서버 주인, 없으면 판을 시작할 때 가장 먼저 들어와 있던 플레이어.
--- 지거나 100일을 깨면 저장을 지운다. 자원 노드와 좀비는 저장하지 않는다(아침이면 어차피 새로 깔린다).
+-- 지거나 100일을 깨면 저장을 지운다. 파밍 상자 상태와 좀비는 저장하지 않는다(새 판이면 상자는 다시 차고 좀비는 아침에 새로 나온다).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -69,7 +69,7 @@ function RunSaveService.Snapshot(day)
 	return snapshot
 end
 
--- 코어·바리케이드를 되돌리고, 지금 있는 플레이어는 바로, 나중에 들어오는 플레이어는 접속할 때 복원한다.
+-- 바리케이드를 되돌리고, 지금 있는 플레이어는 바로, 나중에 들어오는 플레이어는 접속할 때 복원한다.
 function RunSaveService.Apply(snapshot)
 	BaseService.Import(snapshot.Base)
 	table.clear(pendingPlayers)

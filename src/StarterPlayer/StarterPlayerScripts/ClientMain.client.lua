@@ -1,4 +1,4 @@
--- HUD(일차·시간·체력/배고픔/갈증·코어)와 증강 선택 UI를 코드로 만든다.
+-- HUD(일차·시간·체력/배고픔/갈증·인벤토리·제작·보유 증강)와 증강 선택 UI를 코드로 만든다.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -60,9 +60,6 @@ local function makeBar(parent, name, color, size, position)
 	end
 end
 
-local setCore = makeBar(gui, "기지 코어", Color3.fromRGB(80, 170, 255),
-	UDim2.new(0, 340, 0, 18), UDim2.new(0.5, -170, 0, 56))
-
 local statFrame = make("Frame", {
 	Position = UDim2.new(0, 12, 1, -112), Size = UDim2.new(0, 230, 0, 100), BackgroundTransparency = 1,
 }, gui)
@@ -76,9 +73,9 @@ local setHealth = makeBar(statFrame, "체력", Color3.fromRGB(220, 70, 70), UDim
 local setHunger = makeBar(statFrame, "배고픔", Color3.fromRGB(230, 150, 60), UDim2.new(1, 0, 0, 26))
 local setThirst = makeBar(statFrame, "갈증", Color3.fromRGB(70, 160, 230), UDim2.new(1, 0, 0, 26))
 
--- 인벤토리: 재료 개수와 먹기/마시기 버튼
+-- 인벤토리: 재료 개수와 먹기/마시기/치료 버튼
 local inventoryFrame = make("Frame", {
-	Position = UDim2.new(0, 12, 0, 70), Size = UDim2.new(0, 190, 0, 152), BackgroundTransparency = 1,
+	Position = UDim2.new(0, 12, 0, 70), Size = UDim2.new(0, 190, 0, 192), BackgroundTransparency = 1,
 }, gui)
 make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, inventoryFrame)
 local materialsLabel = make("TextLabel", {
@@ -104,6 +101,7 @@ local function makeUseButton(order, item, verb, color)
 end
 local refreshEat = makeUseButton(2, "Food", "먹기", Color3.fromRGB(200, 120, 50))
 local refreshDrink = makeUseButton(3, "Water", "마시기", Color3.fromRGB(50, 130, 200))
+local refreshHeal = makeUseButton(4, "Medkit", "치료", Color3.fromRGB(190, 60, 70))
 
 -- 중앙 메시지
 local messageLabel = make("TextLabel", {
@@ -141,10 +139,7 @@ local function describe(recipe)
 		table.insert(costs, Config.Items[item].Name .. " " .. amount)
 	end
 	table.sort(costs)
-	local effect = recipe.Place and ("체력 " .. recipe.Place.Health)
-		or recipe.Repair and ("코어 +" .. recipe.Repair)
-		or recipe.MaxHealth and ("코어 최대 +" .. recipe.MaxHealth)
-		or "원거리 무기"
+	local effect = recipe.Place and ("체력 " .. recipe.Place.Health) or "원거리 무기"
 	return string.format("%s  ·  %s\n%s", recipe.Name, effect, table.concat(costs, ", "))
 end
 
@@ -178,7 +173,7 @@ local function refreshCraft()
 end
 
 local craftToggle = make("TextButton", {
-	LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(90, 90, 105),
+	LayoutOrder = 5, Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(90, 90, 105),
 	TextColor3 = WHITE, Font = Enum.Font.GothamBold, TextSize = 16, Text = "제작 (C)",
 }, inventoryFrame)
 round(craftToggle)
@@ -390,13 +385,8 @@ RunService.Heartbeat:Connect(function()
 		Config.Items.Stone.Name, player:GetAttribute("Stone") or 0)
 	refreshEat()
 	refreshDrink()
+	refreshHeal()
 	refreshCraft()
-
-	local base = workspace:FindFirstChild("Base")
-	local core = base and base:FindFirstChild("Core")
-	if core then
-		setCore(core:GetAttribute("Health") or 0, core:GetAttribute("MaxHealth") or Config.Core.MaxHealth)
-	end
 
 	if picker.Visible then
 		timerLabel.Text = string.format("%d초", math.max(0, math.ceil(pickDeadline - os.clock())))

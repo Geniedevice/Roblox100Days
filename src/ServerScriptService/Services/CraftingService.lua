@@ -1,4 +1,4 @@
--- 제작. 재료를 검사·차감하고 결과(바리케이드 설치, 코어 수리·강화)를 적용한다.
+-- 제작. 재료를 검사·차감하고 결과(바리케이드 설치, 무기 지급)를 적용한다.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
@@ -67,14 +67,8 @@ function CraftingService.Start()
 		if recipe.Weapon and player:GetAttribute("Has" .. recipe.Weapon) then
 			return false, "이미 가지고 있습니다"
 		end
-		if recipe.Repair and not BaseService.Repair(recipe.Repair) then
-			return false, "코어를 수리할 필요가 없습니다"
-		end
 		if recipe.Place and not placeInFront(player, root, recipe) then
 			return false, "여기에는 설치할 수 없습니다"
-		end
-		if recipe.MaxHealth then
-			BaseService.Upgrade(recipe.MaxHealth)
 		end
 		if recipe.Weapon then
 			player:SetAttribute("Has" .. recipe.Weapon, true)

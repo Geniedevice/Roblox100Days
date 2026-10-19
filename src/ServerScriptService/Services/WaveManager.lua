@@ -1,4 +1,4 @@
--- 밤마다 일차에 맞춰 좀비를 스폰한다.
+-- 낮(배회)과 밤(무리)마다 일차에 맞춰 좀비를 스폰한다.
 -- ServerStorage.ZombieModels에 Normal/Runner/Tank/Boss 모델이 있으면 그걸 쓰고, 없으면 초록색 기본 좀비를 만든다.
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
@@ -96,25 +96,40 @@ local function pickType(day)
 	return "Normal"
 end
 
+local function nearPlayer(position)
+	for _, player in Players:GetPlayers() do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - position).Magnitude < Config.Wave.MinPlayerDistance then
+			return true
+		end
+	end
+	return false
+end
+
+-- Workspace.ZombieSpawns 중 플레이어와 떨어진 곳에서 고른다(모두 가까우면 아무 곳이나).
 local function randomSpawnPosition()
 	local spawns = workspace:FindFirstChild("ZombieSpawns")
-	local parts = {}
+	local far, all = {}, {}
 	if spawns then
 		for _, child in spawns:GetChildren() do
 			if child:IsA("BasePart") then
-				table.insert(parts, child)
+				table.insert(all, child)
+				if not nearPlayer(child.Position) then
+					table.insert(far, child)
+				end
 			end
 		end
 	end
 
-	if #parts > 0 then
-		local part = parts[math.random(#parts)]
+	local pool = #far > 0 and far or all
+	if #pool > 0 then
+		local part = pool[math.random(#pool)]
 		return part.Position + Vector3.new(math.random(-5, 5), 3, math.random(-5, 5))
 	end
 
 	local angle = math.random() * math.pi * 2
 	local radius = Config.Wave.FallbackRadius
-	return BaseService.GetCorePosition() + Vector3.new(math.cos(angle) * radius, 5, math.sin(angle) * radius)
+	return BaseService.GetCenter() + Vector3.new(math.cos(angle) * radius, 5, math.sin(angle) * radius)
 end
 
 local function spawnZombie(typeName, day)
@@ -169,11 +184,12 @@ local function spawnZombie(typeName, day)
 	end)
 end
 
-function WaveManager.Spawn(day)
+-- 낮: 도시를 배회할 좀비, 밤: 몰려오는 무리(+10일마다 보스). 이미 돌던 스폰은 멈추고 새로 시작한다.
+function WaveManager.Spawn(day, isNight)
 	spawnToken += 1
 	local token = spawnToken
 
-	if day % Config.Wave.BossEvery == 0 then
+	if isNight and day % Config.Wave.BossEvery == 0 then
 		spawnZombie("Boss", day)
 		-- 밤 시작 문구가 먼저 보이도록 조금 늦게 띄운다
 		task.delay(2, function()
@@ -181,7 +197,9 @@ function WaveManager.Spawn(day)
 		end)
 	end
 
-	local count = math.floor(Config.Wave.BaseCount + day * Config.Wave.CountPerDay)
+	local wave = Config.Wave
+	local count = isNight and math.floor(wave.BaseCount + day * wave.CountPerDay)
+		or math.floor(wave.DayBase + day * wave.DayPerDay)
 	for _ = 1, count do
 		while #CollectionService:GetTagged("Zombie") >= Config.Wave.MaxAlive do
 			task.wait(0.5)

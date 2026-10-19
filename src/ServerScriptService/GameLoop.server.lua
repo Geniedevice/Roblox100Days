@@ -1,4 +1,4 @@
--- 진입점. 낮 → 밤(웨이브) → 증강 → 다음 날을 100일 동안 반복한다.
+-- 진입점. 낮(파밍, 배회 좀비) → 밤(좀비 무리) → 증강 → 다음 날을 100일 동안 반복한다. 전원 사망하면 패배.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -14,19 +14,18 @@ local ZombieAI = require(Services.ZombieAI)
 local SurvivalStats = require(Services.SurvivalStats)
 local AugmentService = require(Services.AugmentService)
 local InventoryService = require(Services.InventoryService)
-local ResourceService = require(Services.ResourceService)
+local LootService = require(Services.LootService)
 local CraftingService = require(Services.CraftingService)
 local CombatService = require(Services.CombatService)
 local DataService = require(Services.DataService)
 local RunSaveService = require(Services.RunSaveService)
 
-BaseService.GetCore()
 PlayerService.Start()
 ZombieAI.Start()
 SurvivalStats.Start()
 AugmentService.Start()
 InventoryService.Start()
-ResourceService.Start()
+LootService.Start()
 CraftingService.Start()
 CombatService.Start()
 DataService.Start()
@@ -34,9 +33,6 @@ RunSaveService.Start()
 Players.PlayerAdded:Connect(DayManager.SyncPlayer)
 
 local function isLost()
-	if BaseService.IsDestroyed() then
-		return true
-	end
 	return #Players:GetPlayers() > 0 and not PlayerService.AnyAlive()
 end
 
@@ -56,7 +52,7 @@ local function resetGame()
 	WaveManager.Clear()
 	BaseService.Reset()
 	AugmentService.Reset()
-	ResourceService.Reset()
+	LootService.Reset()
 	DayManager.Reset()
 	PlayerService.ResetAll()
 end
@@ -68,12 +64,13 @@ local function runGame(startDay)
 		DayManager.StartDay(day)
 		DataService.RecordDay(day)
 		RunSaveService.Save(day)
+		task.spawn(WaveManager.Spawn, day, false)
 		if not waitPhase(Config.DAY_LENGTH) then
 			return false
 		end
 
 		DayManager.StartNight()
-		task.spawn(WaveManager.Spawn, day)
+		task.spawn(WaveManager.Spawn, day, true)
 		local survived = waitPhase(Config.NIGHT_LENGTH)
 		WaveManager.Stop()
 		if not survived then

@@ -28,7 +28,7 @@ end
 function InventoryService.Start()
 	Remotes.UseItem.OnServerInvoke = function(player, item)
 		local data = typeof(item) == "string" and Config.Items[item]
-		if not data or not (data.Hunger or data.Thirst) then
+		if not data or not (data.Hunger or data.Thirst or data.Heal) then
 			return false
 		end
 		local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -36,6 +36,9 @@ function InventoryService.Start()
 			return false
 		end
 		SurvivalStats.Add(player, data.Hunger or 0, data.Thirst or 0)
+		if data.Heal then
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + data.Heal)
+		end
 		return true
 	end
 end

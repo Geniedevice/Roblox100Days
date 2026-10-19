@@ -1,18 +1,23 @@
 -- 모든 밸런스 수치. 테스트할 때는 DAY_LENGTH / NIGHT_LENGTH / Augment.EveryDays를 줄이면 빠르다.
+-- 게임: 도시 아포칼립스. 낮에 도시를 뒤져 파밍하고, 밤에는 몰려오는 좀비를 버틴다. 날이 갈수록 좀비가 많고 강해진다.
 local Config = {}
 
 Config.TOTAL_DAYS = 100
 Config.DAY_LENGTH = 240 -- 초
 Config.NIGHT_LENGTH = 180 -- 초
 
+-- 마릿수 = Base + 일차 x PerDay. 낮에는 도시를 배회하고, 밤에는 무리로 플레이어를 쫓는다.
 Config.Wave = {
-	BaseCount = 5,
-	CountPerDay = 1.5,
+	DayBase = 4,
+	DayPerDay = 0.5,
+	BaseCount = 5, -- 밤
+	CountPerDay = 1.5, -- 밤
 	HealthScalePerDay = 0.03,
 	BossEvery = 10,
 	MaxAlive = 60,
 	SpawnInterval = 0.5,
-	FallbackRadius = 100, -- Workspace.ZombieSpawns가 없을 때 코어 주변 스폰 반경
+	MinPlayerDistance = 40, -- 플레이어 바로 옆 스폰 지점은 피한다
+	FallbackRadius = 100, -- Workspace.ZombieSpawns가 없을 때 안전가옥 주변 스폰 반경
 }
 
 Config.Zombies = {
@@ -25,7 +30,10 @@ Config.Zombies = {
 
 Config.ZombieAI = {
 	TickRate = 0.3,
-	AggroRange = 120,
+	AggroRange = 60, -- 낮: 이 거리 안의 플레이어만 쫓고, 아니면 배회
+	NightAggroRange = 300, -- 밤: 사실상 맵 전체에서 쫓아온다
+	WanderRadius = 30,
+	RepathTime = 2, -- 건물에 막혔을 때 길찾기를 다시 계산하는 간격(초)
 	AttackRange = 5,
 	AttackCooldown = 1,
 	WalkAnimation = "rbxassetid://507777826", -- Roblox 기본 R15 걷기
@@ -34,8 +42,6 @@ Config.ZombieAI = {
 
 -- 보스 내려찍기: 쿨다운마다 반경 안 플레이어에게 피해
 Config.Boss = { SlamCooldown = 6, SlamRadius = 14, SlamDamage = 30 }
-
-Config.Core = { MaxHealth = 1000 }
 
 Config.Weapon = { Damage = 25, Range = 7, Cooldown = 0.5 }
 Config.Ranged = { Damage = 35, Range = 90, Cooldown = 1.2 } -- 석궁
@@ -48,40 +54,47 @@ Config.Survival = {
 	RespawnMin = 50, -- 부활할 때 배고픔·갈증이 이 값보다 낮으면 여기까지 채운다
 }
 
--- 인벤토리 아이템. Hunger/Thirst가 있으면 먹고 마실 수 있다.
+-- 인벤토리 아이템. Hunger/Thirst/Heal이 있으면 사용할 수 있다.
 Config.Items = {
-	Wood = { Name = "나무" },
-	Stone = { Name = "돌" },
-	Food = { Name = "열매", Hunger = 30 },
-	Water = { Name = "물", Thirst = 35 },
+	Wood = { Name = "목재" },
+	Stone = { Name = "고철" },
+	Food = { Name = "통조림", Hunger = 30 },
+	Water = { Name = "생수", Thirst = 35 },
+	Medkit = { Name = "구급상자", Heal = 40 },
 }
 
--- 자원 노드. 코어에서 MinRadius~MaxRadius 사이에 Count개씩 놓이고, 채집하면 Respawn초 뒤 다시 생긴다.
-Config.Resources = {
-	MinRadius = 25,
-	MaxRadius = 140,
-	Nodes = {
-		Tree = { Label = "나무", Item = "Wood", Amount = 3, HoldTime = 1.5, Respawn = 60, Count = 12 },
-		Rock = { Label = "바위", Item = "Stone", Amount = 2, HoldTime = 2, Respawn = 90, Count = 8 },
-		Bush = { Label = "열매 덤불", Item = "Food", Amount = 2, HoldTime = 1, Respawn = 45, Count = 10 },
-		Pond = { Label = "웅덩이", Item = "Water", Amount = 2, HoldTime = 1, Respawn = 45, Count = 5 },
+-- 파밍 상자. Workspace.LootSpots의 파츠(속성 Container = 아래 이름)마다 놓인다.
+-- 뒤지면 Drops마다 Min~Max개(0이면 안 나옴)를 얻고, Respawn초 뒤 다시 채워진다.
+Config.Loot = {
+	Crate = {
+		Label = "나무 상자", HoldTime = 1.5, Respawn = 90,
+		Drops = { { Item = "Wood", Min = 2, Max = 4 }, { Item = "Stone", Min = 0, Max = 2 } },
+	},
+	Fridge = {
+		Label = "냉장고", HoldTime = 1, Respawn = 120,
+		Drops = { { Item = "Food", Min = 1, Max = 2 }, { Item = "Water", Min = 1, Max = 2 } },
+	},
+	Medical = {
+		Label = "구급함", HoldTime = 1, Respawn = 180,
+		Drops = { { Item = "Medkit", Min = 1, Max = 1 }, { Item = "Water", Min = 0, Max = 1 } },
+	},
+	Car = {
+		Label = "버려진 차", HoldTime = 2.5, Respawn = 150,
+		Drops = { { Item = "Stone", Min = 2, Max = 4 }, { Item = "Food", Min = 0, Max = 1 }, { Item = "Medkit", Min = 0, Max = 1 } },
 	},
 }
 
 -- 제작 목록. 이 순서대로 제작 창에 나온다.
--- Place: 플레이어 앞에 설치하는 구조물(Health는 목수의 손 증강만큼 늘어남), Repair: 코어 회복, MaxHealth: 코어 최대 체력 증가,
--- Weapon: 무기 지급(플레이어 Attribute "Has<Weapon>").
+-- Place: 플레이어 앞에 설치하는 구조물(Health는 목수의 손 증강만큼 늘어남), Weapon: 무기 지급(플레이어 Attribute "Has<Weapon>").
 Config.Crafting = {
 	{
 		Id = "WoodBarricade", Name = "나무 바리케이드", Cost = { Wood = 6 },
 		Place = { Health = 200, Size = Vector3.new(8, 5, 1.2), Color = Color3.fromRGB(140, 100, 60), Material = Enum.Material.WoodPlanks },
 	},
 	{
-		Id = "StoneWall", Name = "돌벽", Cost = { Stone = 6, Wood = 2 },
-		Place = { Health = 500, Size = Vector3.new(8, 6, 1.6), Color = Color3.fromRGB(125, 125, 130), Material = Enum.Material.Cobblestone },
+		Id = "StoneWall", Name = "고철 벽", Cost = { Stone = 6, Wood = 2 },
+		Place = { Health = 500, Size = Vector3.new(8, 6, 1.6), Color = Color3.fromRGB(110, 110, 118), Material = Enum.Material.CorrodedMetal },
 	},
-	{ Id = "CoreRepair", Name = "코어 수리", Cost = { Wood = 3, Stone = 3 }, Repair = 150 },
-	{ Id = "CoreUpgrade", Name = "코어 강화", Cost = { Wood = 10, Stone = 10 }, MaxHealth = 250 },
 	{ Id = "Crossbow", Name = "석궁", Cost = { Wood = 8, Stone = 4 }, Weapon = "Crossbow" }, -- 한 판에 한 번, 죽어도 유지
 }
 

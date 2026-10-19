@@ -1,80 +1,24 @@
--- 기지 코어와 바리케이드 관리. Workspace.Base.Core가 없으면 원점에 임시 코어를 만든다.
+-- 안전가옥 위치와 바리케이드 관리. 바리케이드는 Workspace.Base.Barricades에 둔다.
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 
 local BaseService = {}
-local core
 
-function BaseService.GetCore()
-	if core and core.Parent then
-		return core
-	end
+-- 안전가옥 중심 = SpawnLocation 위치(없으면 원점). 좀비 대체 스폰 반경의 기준.
+function BaseService.GetCenter()
+	local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
+	return spawn and spawn.Position or Vector3.zero
+end
 
+local function getBarricadeFolder()
 	local base = workspace:FindFirstChild("Base")
 	if not base then
 		base = Instance.new("Folder")
 		base.Name = "Base"
 		base.Parent = workspace
 	end
-
-	core = base:FindFirstChild("Core")
-	if not core then
-		local part = Instance.new("Part")
-		part.Name = "Core"
-		part.Size = Vector3.new(6, 6, 6)
-		part.Position = Vector3.new(0, 3, 0)
-		part.Anchored = true
-		part.Material = Enum.Material.Neon
-		part.Color = Color3.fromRGB(80, 170, 255)
-		part.Parent = base
-		core = part
-	end
-
-	if core:GetAttribute("Health") == nil then
-		core:SetAttribute("MaxHealth", Config.Core.MaxHealth)
-		core:SetAttribute("Health", Config.Core.MaxHealth)
-	end
-	return core
-end
-
-function BaseService.GetCorePosition()
-	return BaseService.GetCore():GetPivot().Position
-end
-
-function BaseService.Damage(amount)
-	local c = BaseService.GetCore()
-	local health = math.max(0, (c:GetAttribute("Health") or 0) - amount)
-	c:SetAttribute("Health", health)
-	if health <= 0 and c.ClassName == "Part" then -- 임시 코어만 색으로 표시(메시 코어는 텍스처 유지)
-		c.Color = Color3.fromRGB(40, 40, 40)
-	end
-end
-
-function BaseService.IsDestroyed()
-	return (BaseService.GetCore():GetAttribute("Health") or 0) <= 0
-end
-
--- 다 찼거나 이미 부서졌으면 false.
-function BaseService.Repair(amount)
-	local c = BaseService.GetCore()
-	local max, health = c:GetAttribute("MaxHealth"), c:GetAttribute("Health")
-	if health >= max or health <= 0 then
-		return false
-	end
-	c:SetAttribute("Health", math.min(max, health + amount))
-	return true
-end
-
-function BaseService.Upgrade(amount)
-	local c = BaseService.GetCore()
-	c:SetAttribute("MaxHealth", c:GetAttribute("MaxHealth") + amount)
-	c:SetAttribute("Health", c:GetAttribute("Health") + amount)
-end
-
-local function getBarricadeFolder()
-	local base = BaseService.GetCore().Parent
 	local folder = base:FindFirstChild("Barricades")
 	if not folder then
 		folder = Instance.new("Folder")
@@ -132,7 +76,6 @@ end
 
 -- 이어하기용. DataStore에 넣을 수 있게 숫자·문자열만 쓴다.
 function BaseService.Export()
-	local c = BaseService.GetCore()
 	local walls = {}
 	for _, part in getBarricadeFolder():GetChildren() do
 		table.insert(walls, {
@@ -142,13 +85,10 @@ function BaseService.Export()
 			MaxHealth = part:GetAttribute("MaxHealth"),
 		})
 	end
-	return { MaxHealth = c:GetAttribute("MaxHealth"), Health = c:GetAttribute("Health"), Barricades = walls }
+	return { Barricades = walls }
 end
 
 function BaseService.Import(data)
-	local c = BaseService.GetCore()
-	c:SetAttribute("MaxHealth", data.MaxHealth)
-	c:SetAttribute("Health", data.Health)
 	for _, wall in data.Barricades or {} do
 		for _, recipe in Config.Crafting do
 			if recipe.Id == wall.Recipe and recipe.Place then
@@ -162,12 +102,6 @@ function BaseService.Import(data)
 end
 
 function BaseService.Reset()
-	local c = BaseService.GetCore()
-	c:SetAttribute("MaxHealth", Config.Core.MaxHealth)
-	c:SetAttribute("Health", Config.Core.MaxHealth)
-	if c.ClassName == "Part" then
-		c.Color = Color3.fromRGB(80, 170, 255)
-	end
 	getBarricadeFolder():ClearAllChildren()
 end
 

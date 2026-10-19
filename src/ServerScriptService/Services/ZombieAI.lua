@@ -1,26 +1,105 @@
--- 모든 좀비를 한 루프에서 갱신한다. 가까운 플레이어를 쫓고, 없으면 기지 코어로 간다.
--- 직선 이동(MoveTo)하고 나무·바위에 걸려 멈추면 점프한다. 길찾기(PathfindingService)를 쓰지 않는 건
--- 좀비가 바리케이드를 돌아가지 않고 부수게 하려는 것. 맵에 벽·건물이 생기면 그때 길찾기를 검토한다.
+-- 모든 좀비를 한 루프에서 갱신한다.
+-- 쫓기: 낮에는 AggroRange, 밤에는 NightAggroRange 안의 가장 가까운 플레이어. 없으면 근처를 배회한다.
+-- 이동: 목표까지 Workspace.City(건물)에 막히지 않으면 직선(MoveTo), 막히면 PathfindingService로 돌아간다.
+-- 바리케이드는 City가 아니라서 직선으로 들이받고 부순다.
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
+local PathfindingService = game:GetService("PathfindingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local PlayerService = require(script.Parent.PlayerService)
 local BaseService = require(script.Parent.BaseService)
+local DayManager = require(script.Parent.DayManager)
 
 local ZombieAI = {}
 local lastAttack = setmetatable({}, { __mode = "k" })
 local lastPosition = setmetatable({}, { __mode = "k" })
 local lastSlam = setmetatable({}, { __mode = "k" })
+local wanderGoal = setmetatable({}, { __mode = "k" })
+local paths = setmetatable({}, { __mode = "k" }) -- [zombie] = { Waypoints, Index, Goal, Time, Computing }
 
-local function moveToward(zombie, humanoid, root, goal, distance, reach)
+local FLAT = Vector3.new(1, 0, 1)
+
+local function isBlocked(from, to)
+	local city = workspace:FindFirstChild("City")
+	if not city then
+		return false
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { city }
+	return workspace:Raycast(from, to - from, params) ~= nil
+end
+
+local function requestPath(zombie, root, goal, now)
+	local entry = paths[zombie]
+	if entry and (entry.Computing or now - entry.Time < Config.ZombieAI.RepathTime) then
+		return
+	end
+	entry = entry or {}
+	entry.Computing, entry.Time, entry.Goal = true, now, goal
+	paths[zombie] = entry
+	task.spawn(function()
+		local path = PathfindingService:CreatePath({ AgentRadius = 2, AgentHeight = 5, AgentCanJump = true })
+		local ok = pcall(path.ComputeAsync, path, root.Position, goal)
+		entry.Computing = false
+		if ok and path.Status == Enum.PathStatus.Success then
+			entry.Waypoints, entry.Index = path:GetWaypoints(), 2
+		else
+			entry.Waypoints = nil
+		end
+	end)
+end
+
+-- 길을 따라가면 true, 쓸 길이 없으면 false(직선으로 간다).
+local function followPath(zombie, humanoid, root, goal, now)
+	requestPath(zombie, root, goal, now)
+	local entry = paths[zombie]
+	local waypoints = entry and entry.Waypoints
+	if not waypoints then
+		return false
+	end
+	local waypoint = waypoints[entry.Index]
+	while waypoint and ((waypoint.Position - root.Position) * FLAT).Magnitude < 3 do
+		entry.Index += 1
+		waypoint = waypoints[entry.Index]
+	end
+	if not waypoint then
+		return false
+	end
+	humanoid:MoveTo(waypoint.Position)
+	if waypoint.Action == Enum.PathWaypointAction.Jump then
+		humanoid.Jump = true
+	end
+	return true
+end
+
+local function moveToward(zombie, humanoid, root, goal, distance, reach, now)
+	if isBlocked(root.Position, goal) and followPath(zombie, humanoid, root, goal, now) then
+		return
+	end
 	humanoid:MoveTo(goal)
 	local previous = lastPosition[zombie]
 	lastPosition[zombie] = root.Position
 	if distance > reach and previous and (root.Position - previous).Magnitude < 0.2 then
 		humanoid.Jump = true
 	end
+end
+
+-- 목표가 없으면 근처를 어슬렁거린다. 도착했거나 걸려서 멈추면 새 지점을 고른다.
+local function wander(zombie, humanoid, root)
+	local goal = wanderGoal[zombie]
+	local previous = lastPosition[zombie]
+	lastPosition[zombie] = root.Position
+	local stuck = previous and (root.Position - previous).Magnitude < 0.2
+	if not goal or stuck or ((goal - root.Position) * FLAT).Magnitude < 4 then
+		local angle = math.random() * math.pi * 2
+		local radius = math.random(8, Config.ZombieAI.WanderRadius)
+		goal = root.Position + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		wanderGoal[zombie] = goal
+	end
+	humanoid:MoveTo(goal)
 end
 
 -- 보스 내려찍기: 반경 안 모든 플레이어에게 피해 + 바닥에 붉은 원
@@ -48,7 +127,7 @@ local function slam(zombie, humanoid, root, targets, now)
 	Debris:AddItem(ring, 0.4)
 end
 
-local function update(zombie, targets, corePosition, now)
+local function update(zombie, targets, aggroRange, now)
 	local root = zombie:FindFirstChild("HumanoidRootPart")
 	local humanoid = zombie:FindFirstChildOfClass("Humanoid")
 	if not root or not humanoid or humanoid.Health <= 0 then
@@ -56,7 +135,7 @@ local function update(zombie, targets, corePosition, now)
 	end
 
 	local bestPlayer, bestPosition = nil, nil
-	local bestDistance = Config.ZombieAI.AggroRange
+	local bestDistance = aggroRange
 	for _, target in targets do
 		local distance = (target.Root.Position - root.Position).Magnitude
 		if distance < bestDistance then
@@ -84,19 +163,15 @@ local function update(zombie, targets, corePosition, now)
 		return
 	end
 
-	if bestPlayer then
-		moveToward(zombie, humanoid, root, bestPosition, bestDistance, reach)
-		if bestDistance <= reach and canAttack then
-			lastAttack[zombie] = now
-			PlayerService.Damage(bestPlayer, damage)
-		end
-	else
-		local coreDistance = (corePosition - root.Position).Magnitude
-		moveToward(zombie, humanoid, root, corePosition, coreDistance, reach + 4)
-		if coreDistance <= reach + 4 and canAttack then
-			lastAttack[zombie] = now
-			BaseService.Damage(damage)
-		end
+	if not bestPlayer then
+		wander(zombie, humanoid, root)
+		return
+	end
+	wanderGoal[zombie] = nil
+	moveToward(zombie, humanoid, root, bestPosition, bestDistance, reach, now)
+	if bestDistance <= reach and canAttack then
+		lastAttack[zombie] = now
+		PlayerService.Damage(bestPlayer, damage)
 	end
 end
 
@@ -105,10 +180,10 @@ function ZombieAI.Start()
 		while true do
 			task.wait(Config.ZombieAI.TickRate)
 			local targets = PlayerService.GetAliveCharacters()
-			local corePosition = BaseService.GetCorePosition()
+			local aggroRange = DayManager.IsNight and Config.ZombieAI.NightAggroRange or Config.ZombieAI.AggroRange
 			local now = os.clock()
 			for _, zombie in CollectionService:GetTagged("Zombie") do
-				update(zombie, targets, corePosition, now)
+				update(zombie, targets, aggroRange, now)
 			end
 		end
 	end)
