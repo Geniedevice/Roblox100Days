@@ -45,6 +45,7 @@ Config.Boss = { SlamCooldown = 6, SlamRadius = 14, SlamDamage = 30 }
 
 Config.Weapon = { Damage = 25, Range = 7, Cooldown = 0.5 }
 Config.Ranged = { Damage = 35, Range = 90, Cooldown = 1.2 } -- 석궁
+Config.PvP = { Enabled = true, DamageScale = 1 } -- 플레이어끼리 주는 피해 배율
 
 Config.Survival = {
 	Max = 100,

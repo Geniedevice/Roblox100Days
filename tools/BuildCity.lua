@@ -1,7 +1,9 @@
 -- 도시 맵 생성기. Studio 편집 모드에서 실행(execute_luau 또는 Command Bar). 다시 실행하면 City를 새로 만든다.
 -- 만드는 것: Workspace.City(도로·인도·건물·가로등·공원), Workspace.LootSpots(파밍 상자 위치, 속성 Container),
 -- Workspace.ZombieSpawns(좀비 스폰 위치), SpawnLocation(중앙 안전가옥)
--- 건물은 1층만 들어갈 수 있고(문 하나, 안에 상자), 위층은 창문 띠가 있는 외벽이다.
+-- 건물: ServerStorage.CityKit.Buildings의 Modern City 템플릿(Roblox 공식 Modular Building Kit, 1층 출입구를 연 것)을
+-- 놓고, 안에 1~3층 바닥·계단·실내 벽·조명·파밍 상자를 만든다. 4층 위는 막혀 있다.
+-- 공원 나무는 ServerStorage.CityKit.Tree를 쓴다.
 local ServerStorage = game:GetService("ServerStorage")
 
 local SEED = 100
@@ -11,7 +13,18 @@ local ROAD = 24
 local BLOCK = PITCH - ROAD -- 72
 local GROUND = 2 -- 지형 윗면
 local WALK = GROUND + 0.6 -- 인도 윗면
-local FLOOR_H = 12
+local STOREY = 15 -- Modular Building Kit 한 층 높이
+local FLOORS = 3 -- 들어갈 수 있는 층 수
+local INSET = 3.6 -- 외벽 모듈 안쪽(가장 두꺼운 문 모듈 3.5)
+local STAIR_W, STAIR_RUN = 5, 1.5 -- 계단 폭, 한 칸 길이(한 칸 높이 1)
+
+local kit = ServerStorage:FindFirstChild("CityKit")
+assert(kit and kit:FindFirstChild("Buildings"), "ServerStorage.CityKit.Buildings가 필요합니다")
+local templates = {}
+for _, t in kit.Buildings:GetChildren() do
+	templates[t.Name] = t
+end
+local trees = kit:FindFirstChild("Tree")
 
 local rng = Random.new(SEED)
 
@@ -20,10 +33,6 @@ for _, name in { "City", "LootSpots", "ZombieSpawns" } do
 	if old then
 		old:Destroy()
 	end
-end
-local base = workspace:FindFirstChild("Base")
-if base and base:FindFirstChild("Core") then
-	base.Core:Destroy()
 end
 
 local function folder(name, parent)
@@ -52,8 +61,8 @@ local function part(parent, size, cframe, color, material, props)
 	return p
 end
 
-local function marker(parent, name, position, attribute)
-	local p = part(parent, Vector3.new(2, 0.2, 2), CFrame.new(position), Color3.new(1, 0, 0), Enum.Material.SmoothPlastic, {
+local function marker(parent, name, cframe, attribute)
+	local p = part(parent, Vector3.new(2, 0.2, 2), cframe, Color3.new(1, 0, 0), Enum.Material.SmoothPlastic, {
 		Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false,
 	})
 	p.Name = name
@@ -93,75 +102,127 @@ for i = -GRID - 1, GRID do
 	end
 end
 
-local BUILDING_COLORS = {
-	Color3.fromRGB(150, 140, 130), Color3.fromRGB(120, 110, 105), Color3.fromRGB(170, 150, 120),
-	Color3.fromRGB(110, 120, 130), Color3.fromRGB(140, 90, 80), Color3.fromRGB(95, 95, 100),
-}
+local WALL_COLOR = Color3.fromRGB(200, 195, 185)
+local FLOOR_COLOR = Color3.fromRGB(110, 95, 80)
 
--- 건물: 1층 껍데기(문 하나) + 위층 덩어리 + 창문 띠. center는 바닥 중앙(인도 윗면 높이).
-local function building(parent, center, width, depth, floors, doorSide)
-	local model = Instance.new("Model")
-	model.Name = "Building"
-	model.Parent = parent
-	local color = BUILDING_COLORS[rng:NextInteger(1, #BUILDING_COLORS)]
-	local wall, h = 1, FLOOR_H
-	local y = center.Y + h / 2
-	local door = 8
+-- 건물 로컬 좌표(피벗 = 1층 바닥 중앙)로 파츠를 만든다.
+local function localPart(parent, origin, size, offset, color, material)
+	return part(parent, size, origin * CFrame.new(offset), color, material)
+end
 
-	local function wallX(z, isDoor) -- x방향으로 뻗은 벽(앞/뒤)
-		if not isDoor then
-			part(model, Vector3.new(width, h, wall), CFrame.new(center.X, y, z), color, Enum.Material.Concrete)
-			return
-		end
-		local side = (width - door) / 2
-		part(model, Vector3.new(side, h, wall), CFrame.new(center.X - (door + side) / 2, y, z), color, Enum.Material.Concrete)
-		part(model, Vector3.new(side, h, wall), CFrame.new(center.X + (door + side) / 2, y, z), color, Enum.Material.Concrete)
-		part(model, Vector3.new(door, h - 9, wall), CFrame.new(center.X, center.Y + 9 + (h - 9) / 2, z), color, Enum.Material.Concrete)
-	end
-	wallX(center.Z - depth / 2 + wall / 2, doorSide == -1)
-	wallX(center.Z + depth / 2 - wall / 2, doorSide == 1)
-	for _, sx in { -1, 1 } do
-		part(model, Vector3.new(wall, h, depth - wall * 2), CFrame.new(center.X + sx * (width / 2 - wall / 2), y, center.Z), color, Enum.Material.Concrete)
-	end
-	-- 실내 바닥과 천장
-	part(model, Vector3.new(width - wall * 2, 0.2, depth - wall * 2), CFrame.new(center.X, center.Y + 0.1, center.Z), Color3.fromRGB(90, 80, 70), Enum.Material.WoodPlanks)
-	part(model, Vector3.new(width, 1, depth), CFrame.new(center.X, center.Y + h + 0.5, center.Z), color, Enum.Material.Concrete)
-
-	-- 위층(속이 찬 덩어리) + 층마다 창문 띠
-	if floors > 0 then
-		local upper = floors * FLOOR_H
-		local upperY = center.Y + h + 1 + upper / 2
-		part(model, Vector3.new(width, upper, depth), CFrame.new(center.X, upperY, center.Z), color, Enum.Material.Concrete)
-		for f = 0, floors - 1 do
-			local wy = center.Y + h + 1 + f * FLOOR_H + FLOOR_H / 2
-			local glass = { Color = Color3.fromRGB(40, 55, 70), Material = Enum.Material.Glass }
-			part(model, Vector3.new(width - 4, 4, 0.2), CFrame.new(center.X, wy, center.Z - depth / 2 - 0.1), glass.Color, glass.Material, { CanCollide = false })
-			part(model, Vector3.new(width - 4, 4, 0.2), CFrame.new(center.X, wy, center.Z + depth / 2 + 0.1), glass.Color, glass.Material, { CanCollide = false })
-			part(model, Vector3.new(0.2, 4, depth - 4), CFrame.new(center.X - width / 2 - 0.1, wy, center.Z), glass.Color, glass.Material, { CanCollide = false })
-			part(model, Vector3.new(0.2, 4, depth - 4), CFrame.new(center.X + width / 2 + 0.1, wy, center.Z), glass.Color, glass.Material, { CanCollide = false })
-		end
-	end
-
-	-- 실내 조명(밤에 안이 보이게)
-	local lamp = part(model, Vector3.new(2, 0.3, 2), CFrame.new(center.X, center.Y + h - 0.2, center.Z), Color3.fromRGB(255, 230, 180), Enum.Material.Neon, { CanCollide = false })
-	local light = Instance.new("PointLight")
-	light.Range = math.max(width, depth) * 0.7
-	light.Brightness = 0.8
-	light.Color = Color3.fromRGB(255, 220, 170)
-	light.Parent = lamp
-
-	-- 상자: 벽 쪽에 1~3개
-	local count = rng:NextInteger(1, 3)
-	for i = 1, count do
-		local sx = (i % 2 == 0) and 1 or -1
-		local px = center.X + sx * (width / 2 - 3.5)
-		local pz = center.Z + rng:NextNumber(-depth / 2 + 4, depth / 2 - 4)
-		marker(lootSpots, "Spot", Vector3.new(px, center.Y + 0.2, pz), pickLoot())
+-- x축 범위 [a, b], z축 범위 [c, d]를 덮는 바닥판(윗면 y)
+local function slab(parent, origin, a, b, c, d, y)
+	if b - a > 0.1 and d - c > 0.1 then
+		localPart(parent, origin, Vector3.new(b - a, 1, d - c), Vector3.new((a + b) / 2, y - 0.5, (c + d) / 2), FLOOR_COLOR, Enum.Material.WoodPlanks)
 	end
 end
 
-local trees = ServerStorage:FindFirstChild("ResourceModels") and ServerStorage.ResourceModels:FindFirstChild("Tree")
+-- 한쪽 벽을 따라 놓는 실내 벽. gaps = { {from, to} } 는 비워 둘 구간(벽 방향 좌표)
+local function liner(parent, origin, axis, fixed, from, to, y0, height, gaps)
+	table.sort(gaps, function(g1, g2) return g1[1] < g2[1] end)
+	local segments, cursor = {}, from
+	for _, g in gaps do
+		if g[1] > cursor then
+			table.insert(segments, { cursor, math.min(g[1], to) })
+		end
+		cursor = math.max(cursor, g[2])
+	end
+	if cursor < to then
+		table.insert(segments, { cursor, to })
+	end
+	for _, s in segments do
+		local length, mid = s[2] - s[1], (s[1] + s[2]) / 2
+		if length > 0.2 then
+			local size = axis == "z" and Vector3.new(0.6, height, length) or Vector3.new(length, height, 0.6)
+			local offset = axis == "z" and Vector3.new(fixed, y0 + height / 2, mid) or Vector3.new(mid, y0 + height / 2, fixed)
+			localPart(parent, origin, size, offset, WALL_COLOR, Enum.Material.Plaster)
+		end
+	end
+end
+
+-- Modern City 템플릿 하나를 놓고 내부를 만든다. center = 1층 바닥 중앙(월드), yaw = 0/90/180/270도
+local function building(parent, template, center, yaw)
+	local model = template:Clone()
+	model.Name = "Building"
+	local origin = CFrame.new(center) * CFrame.Angles(0, math.rad(yaw), 0)
+	model:PivotTo(origin)
+	model.Parent = parent
+
+	local hx, hz = template:GetAttribute("ShellX") / 2, template:GetAttribute("ShellZ") / 2
+	local x0, x1, z0, z1 = -hx + INSET, hx - INSET, -hz + INSET, hz - INSET
+	local interior = folder("Interior", model)
+
+	-- 1층 출입구 위치(로컬): 실내 벽에서 비워 둘 구간
+	local gaps = { xMin = {}, xMax = {}, zMin = {}, zMax = {} }
+	for _, module in model.Bldg_Bottom:GetChildren() do
+		if module:GetAttribute("Doorway") then
+			local lp = origin:PointToObjectSpace(module:GetBoundingBox().Position)
+			if math.abs(lp.X) / hx > math.abs(lp.Z) / hz then
+				table.insert(lp.X < 0 and gaps.xMin or gaps.xMax, { lp.Z - 8.5, lp.Z + 8.5 })
+			else
+				table.insert(lp.Z < 0 and gaps.zMin or gaps.zMax, { lp.X - 8.5, lp.X + 8.5 })
+			end
+		end
+	end
+
+	-- 계단: k층→k+1층, 짝수층은 -x 벽, 홀수층은 +x 벽을 따라 z 방향으로 오른다
+	local stairLength = STOREY * STAIR_RUN
+	local sz0 = z0 + 6 -- 모서리 외벽 모듈(8.3x8.3) 충돌 상자가 실내로 약 4.7 들어와 있어서 비켜 시작한다
+	local function stairX(k)
+		return k % 2 == 0 and { x0, x0 + STAIR_W } or { x1 - STAIR_W, x1 }
+	end
+
+	for level = 0, FLOORS - 1 do
+		local y = level * STOREY
+		-- 바닥(1층은 실내 바닥판, 위층은 아래 계단 자리를 뚫은 바닥)
+		if level == 0 then
+			slab(interior, origin, x0, x1, z0, z1, 0.2)
+		else
+			local hole = stairX(level - 1)
+			slab(interior, origin, x0, hole[1], z0, z1, y)
+			slab(interior, origin, hole[2], x1, z0, z1, y)
+			slab(interior, origin, hole[1], hole[2], z0, sz0, y)
+			slab(interior, origin, hole[1], hole[2], sz0 + stairLength, z1, y)
+		end
+		-- 실내 벽(1층만 출입구 자리를 비움)
+		local isGround = level == 0
+		liner(interior, origin, "z", x0 - 0.3, z0, z1, y, STOREY, isGround and gaps.xMin or {})
+		liner(interior, origin, "z", x1 + 0.3, z0, z1, y, STOREY, isGround and gaps.xMax or {})
+		liner(interior, origin, "x", z0 - 0.3, x0, x1, y, STOREY, isGround and gaps.zMin or {})
+		liner(interior, origin, "x", z1 + 0.3, x0, x1, y, STOREY, isGround and gaps.zMax or {})
+		-- 계단(마지막 층 제외)
+		if level < FLOORS - 1 then
+			local sx = stairX(level)
+			for step = 1, STOREY do
+				localPart(interior, origin, Vector3.new(STAIR_W, 1, STAIR_RUN),
+					Vector3.new((sx[1] + sx[2]) / 2, y + step - 0.5, sz0 + (step - 0.5) * STAIR_RUN),
+					Color3.fromRGB(130, 125, 120), Enum.Material.Concrete)
+			end
+		end
+		-- 조명
+		local lamp = localPart(interior, origin, Vector3.new(2, 0.3, 2), Vector3.new(0, y + STOREY - 1.2, 0), Color3.fromRGB(255, 230, 180), Enum.Material.Neon)
+		lamp.CanCollide = false
+		local light = Instance.new("PointLight")
+		light.Range = math.max(x1 - x0, z1 - z0) * 0.8
+		light.Brightness = 0.9
+		light.Color = Color3.fromRGB(255, 220, 170)
+		light.Parent = lamp
+		-- 파밍 상자: 계단 줄을 피한 가운데 영역에 1~2개
+		for _ = 1, rng:NextInteger(1, 2) do
+			local lx = rng:NextNumber(x0 + STAIR_W + 3, x1 - STAIR_W - 3)
+			local lz = rng:NextNumber(z0 + 3, z1 - 3)
+			local spotY = (level == 0 and 0.2 or y)
+			marker(lootSpots, "Spot", origin * CFrame.new(lx, spotY, lz) * CFrame.Angles(0, math.rad(rng:NextInteger(0, 3) * 90), 0), pickLoot())
+		end
+	end
+	-- 4층 위를 막는 천장
+	slab(interior, origin, x0, x1, z0, z1, FLOORS * STOREY)
+	return model
+end
+
 local PARK = Vector2.new(1, -1)
+local PAIR = { "A", "B" } -- 좁은 건물 둘을 나란히
+local SINGLE = "F" -- 넓은 건물 하나
 
 for bx = -GRID, GRID do
 	for bz = -GRID, GRID do
@@ -179,7 +240,7 @@ for bx = -GRID, GRID do
 				part(blockFolder, Vector3.new(1, h, 40), CFrame.new(cx + sx * 20, WALK + h / 2, cz), wallColor, Enum.Material.Brick)
 				part(blockFolder, Vector3.new(12, h, 1), CFrame.new(cx + sx * 14, WALK + h / 2, cz + 20), wallColor, Enum.Material.Brick)
 			end
-			marker(lootSpots, "Spot", Vector3.new(cx - 15, WALK + 0.2, cz - 15), "Crate")
+			marker(lootSpots, "Spot", CFrame.new(cx - 15, WALK + 0.2, cz - 15), "Crate")
 			local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
 			if spawn then
 				spawn.Position = Vector3.new(cx, WALK + spawn.Size.Y / 2, cz)
@@ -194,16 +255,15 @@ for bx = -GRID, GRID do
 					t.Parent = blockFolder
 				end
 			end
-			marker(lootSpots, "Spot", Vector3.new(cx, WALK + 0.4, cz), "Crate")
+			marker(lootSpots, "Spot", CFrame.new(cx, WALK + 0.4, cz), "Crate")
 		elseif rng:NextNumber() < 0.5 then
-			-- 큰 건물 하나
-			local w, d = rng:NextInteger(32, 46), rng:NextInteger(32, 46)
-			building(blockFolder, floor, w, d, rng:NextInteger(1, 4), rng:NextInteger(0, 1) * 2 - 1)
+			building(blockFolder, templates[SINGLE], floor, rng:NextInteger(0, 3) * 90)
 		else
-			-- 작은 건물 둘(좌우), 문은 앞이나 뒤
-			for _, sx in { -1, 1 } do
-				local w, d = rng:NextInteger(22, 28), rng:NextInteger(26, 44)
-				building(blockFolder, floor + Vector3.new(sx * 18, 0, 0), w, d, rng:NextInteger(0, 3), rng:NextInteger(0, 1) * 2 - 1)
+			-- 좁은 건물 둘(좌우), 앞뒤 방향만 무작위
+			for i, sx in { -1, 1 } do
+				local template = templates[PAIR[i]]
+				local offset = sx * (template:GetAttribute("ShellX") / 2 + 1.5)
+				building(blockFolder, template, floor + Vector3.new(offset, 0, 0), rng:NextInteger(0, 1) * 180)
 			end
 		end
 	end
@@ -233,23 +293,16 @@ for i = -GRID - 1, GRID do
 			local z = horizontal and roadCenter or along
 			local position = Vector3.new(x, GROUND + 0.2, z)
 			if position.Magnitude > 100 then
-				marker(zombieSpawns, "Spawn", position)
+				marker(zombieSpawns, "Spawn", CFrame.new(position))
 			end
 			if rng:NextNumber() < 0.35 then
 				local lane = rng:NextInteger(0, 1) * 2 - 1
 				local offset = horizontal and Vector3.new(rng:NextNumber(-20, 20), 0, lane * 6) or Vector3.new(lane * 6, 0, rng:NextNumber(-20, 20))
-				local spot = marker(lootSpots, "Spot", position + offset, "Car")
 				local yaw = (horizontal and math.rad(90) or 0) + math.rad(rng:NextNumber(-25, 25))
-				spot.CFrame = CFrame.new(spot.Position) * CFrame.Angles(0, yaw, 0)
+				marker(lootSpots, "Spot", CFrame.new(position + offset) * CFrame.Angles(0, yaw, 0), "Car")
 			end
 		end
 	end
-end
-
--- 자연 자원 모델은 이제 쓰지 않는다(나무는 공원에 복사해 둠)
-local resourceModels = ServerStorage:FindFirstChild("ResourceModels")
-if resourceModels then
-	resourceModels:Destroy()
 end
 
 local counts = {}

@@ -148,6 +148,7 @@ function PlayerService.Start()
 		end
 	end
 	PhysicsService:CollisionGroupSetCollidable("Players", "Zombies", false)
+	CombatService.DamagePlayer = PlayerService.Damage -- PvP 피해도 증강(피해 감소·불굴)을 거친다
 
 	Players.CharacterAutoLoads = false
 	Players.PlayerAdded:Connect(onPlayerAdded)

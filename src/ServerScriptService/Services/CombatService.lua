@@ -1,6 +1,7 @@
--- 무기(야구방망이, 석궁) 지급, 서버 판정 공격, 좀비 처치 시 증강 효과 처리.
+-- 무기(야구방망이, 석궁) 지급, 서버 판정 공격(좀비 + PvP), 좀비 처치 시 증강 효과 처리.
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -101,6 +102,23 @@ function CombatService.DamageZombie(zombie, amount, player)
 	end
 end
 
+-- PvP. 상대의 증강(피해 감소·불굴)이 적용되도록 PlayerService.Start가 PlayerService.Damage를 넣어 준다.
+CombatService.DamagePlayer = nil
+
+local function hitPlayer(attacker, victim, amount)
+	if not Config.PvP.Enabled or victim == attacker or not CombatService.DamagePlayer then
+		return
+	end
+	local humanoid = victim.Character and victim.Character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	CombatService.DamagePlayer(victim, amount * Config.PvP.DamageScale)
+	if humanoid.Health <= 0 then
+		Remotes.GameMessage:FireAllClients(string.format("%s님이 %s님을 쓰러뜨렸습니다", attacker.DisplayName, victim.DisplayName))
+	end
+end
+
 function CombatService.Swing(player)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -117,14 +135,20 @@ function CombatService.Swing(player)
 	lastSwing[player] = now
 
 	local damage = Config.Weapon.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
+	local function inFront(target, range)
+		local offset = target.Position - root.Position
+		return offset.Magnitude <= range and root.CFrame.LookVector:Dot(offset.Unit) > 0.3
+	end
 	for _, zombie in CollectionService:GetTagged("Zombie") do
 		local zombieRoot = zombie:FindFirstChild("HumanoidRootPart")
-		if zombieRoot then
-			local offset = zombieRoot.Position - root.Position
-			local range = Config.Weapon.Range + (zombie:GetAttribute("Scale") or 1) * 1.5
-			if offset.Magnitude <= range and root.CFrame.LookVector:Dot(offset.Unit) > 0.3 then
-				CombatService.DamageZombie(zombie, damage, player)
-			end
+		if zombieRoot and inFront(zombieRoot, Config.Weapon.Range + (zombie:GetAttribute("Scale") or 1) * 1.5) then
+			CombatService.DamageZombie(zombie, damage, player)
+		end
+	end
+	for _, other in Players:GetPlayers() do
+		local otherRoot = other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart")
+		if otherRoot and inFront(otherRoot, Config.Weapon.Range + 1.5) then
+			hitPlayer(player, other, damage)
 		end
 	end
 end
@@ -171,10 +195,15 @@ local function shoot(player, target)
 	bolt.Parent = workspace
 	Debris:AddItem(bolt, 0.15)
 
-	local zombie = hit and hit.Instance:FindFirstAncestorOfClass("Model")
-	if zombie and CollectionService:HasTag(zombie, "Zombie") then
-		local damage = Config.Ranged.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
-		CombatService.DamageZombie(zombie, damage, player)
+	local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
+	local damage = Config.Ranged.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
+	if model and CollectionService:HasTag(model, "Zombie") then
+		CombatService.DamageZombie(model, damage, player)
+	elseif model then
+		local victim = Players:GetPlayerFromCharacter(model)
+		if victim then
+			hitPlayer(player, victim, damage)
+		end
 	end
 end
 
