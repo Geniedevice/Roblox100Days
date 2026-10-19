@@ -51,10 +51,25 @@ Config.Ranged = { Damage = 35, Range = 90, Cooldown = 1.2 } -- 석궁
 Config.Gun = { Damage = 30, Range = 150, Cooldown = 0.2, ClipSize = 12, ReloadTime = 2 } -- 소총(탄약 1발씩)
 Config.PvP = { Enabled = true, DamageScale = 1 } -- 플레이어끼리 주는 피해 배율
 
--- 무기 애니메이션(Roblox 공식 Endorsed Weapons Kit, R15). 재생 확인한 것만 쓴다.
+-- 무기 애니메이션·소리(Roblox 공식 Endorsed Weapons Kit). 재생 확인한 것만 쓴다.
 Config.WeaponAnimations = {
 	RifleHold = "rbxassetid://3972164452", -- 소총을 든 동안 반복
+	RifleAim = "rbxassetid://3972157449", -- 우클릭 조준(줌) 동안
 	RifleReload = "rbxassetid://3972131105",
+}
+Config.WeaponSounds = { Hit = "rbxassetid://1489924400" } -- 명중음(사격·재장전음은 소총 모델 안의 Sound)
+
+-- 조준(우클릭/모바일 버튼): 시야각과 마우스 감도
+Config.Aim = { FieldOfView = { ["소총"] = 40, ["석궁"] = 50 }, Sensitivity = 0.6 }
+
+-- 증강으로 켜지는 능력의 수치(레벨당)
+Config.Abilities = {
+	ChainRange = 12, ChainDamage = 20, -- 연쇄 번개: 맞은 좀비 주변으로 Lv+1마리
+	ExplosionRadius = 8, ExplosionDamage = 40, -- 폭발탄
+	KnockbackSpeed = 35, -- 넉백
+	WhirlwindRange = 10, -- 회전 베기 반경
+	DroneInterval = 2, DroneRange = 45, DroneDamage = 15, -- 수호 드론
+	AuraInterval = 5, AuraRadius = 15, AuraHeal = 5, -- 치유 오라
 }
 
 Config.Survival = {

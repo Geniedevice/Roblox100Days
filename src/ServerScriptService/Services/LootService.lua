@@ -118,8 +118,15 @@ local function search(model, def, player)
 	end
 	setLooted(model, true)
 
+	local got = roll(def)
+	-- 약탈자 증강: 나온 아이템 중 하나를 레벨만큼 더
+	local bonus = player:GetAttribute("LootBonus") or 0
+	if bonus > 0 then
+		local item = next(got)
+		got[item] += bonus
+	end
 	local parts = {}
-	for item, count in roll(def) do
+	for item, count in got do
 		InventoryService.Add(player, item, count)
 		table.insert(parts, Config.Items[item].Name .. " " .. count)
 	end

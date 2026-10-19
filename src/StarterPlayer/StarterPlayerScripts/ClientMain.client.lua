@@ -187,32 +187,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
--- 원거리 무기(Ranged 표시가 있는 Tool): 클릭/터치한 지점을 서버로 보낸다
-local mouse = player:GetMouse()
-local hookedTools = setmetatable({}, { __mode = "k" })
-local function hookTool(tool)
-	if tool:IsA("Tool") and tool:GetAttribute("Ranged") and not hookedTools[tool] then
-		hookedTools[tool] = true
-		tool.Activated:Connect(function()
-			Remotes.Shoot:FireServer(mouse.Hit.Position)
-		end)
-	end
-end
-local function watchTools(container)
-	container.ChildAdded:Connect(hookTool)
-	for _, child in container:GetChildren() do
-		hookTool(child)
-	end
-end
-player.CharacterAdded:Connect(function(character)
-	watchTools(character)
-	watchTools(player:WaitForChild("Backpack"))
-end)
-if player.Character then
-	watchTools(player.Character)
-end
-watchTools(player:WaitForChild("Backpack"))
-
 -- 증강 선택 창
 local picker = make("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.55, 0), Size = UDim2.new(0.9, 0, 0.55, 0),

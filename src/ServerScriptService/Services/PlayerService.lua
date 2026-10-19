@@ -13,7 +13,8 @@ local PlayerService = {}
 local AUGMENT_ATTRIBUTES = {
 	"DamageBonus", "HungerReduction", "ThirstReduction", "SpeedBonus", "DamageReduction",
 	"BarricadeBonus", "LifeOnKill", "AttackSpeedBonus", "MaxHealthBonus", "ExplodeDamage",
-	"UndyingCharges", "FoodOnKill",
+	"UndyingCharges", "FoodOnKill", "GunDamageBonus", "ClipBonus", "ReloadReduction", "AmmoSaveChance", "Pierce",
+	"ExplosiveRounds", "Whirlwind", "Knockback", "ChainLightning", "DroneLevel", "HealAura", "LootBonus",
 }
 
 local function getHumanoid(player)

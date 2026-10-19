@@ -65,6 +65,70 @@ local AugmentData = {
 		Description = "좀비 처치 시 배고픔·갈증 +4",
 		Apply = function(player) add(player, "FoodOnKill", 4) end,
 	},
+
+	-- 총기
+	HeavyRounds = {
+		Name = "대구경 탄", Rarity = "Gold", Category = "총기", MaxStack = 3,
+		Description = "총기(석궁·소총) 피해 +25%",
+		Apply = function(player) add(player, "GunDamageBonus", 0.25) end,
+	},
+	ExtendedMag = {
+		Name = "확장 탄창", Rarity = "Silver", Category = "총기", MaxStack = 3,
+		Description = "소총 탄창 +6발",
+		Apply = function(player) add(player, "ClipBonus", 6) end,
+	},
+	QuickHands = {
+		Name = "빠른 손", Rarity = "Silver", Category = "총기", MaxStack = 2,
+		Description = "재장전 시간 -25%",
+		Apply = function(player) add(player, "ReloadReduction", 0.25) end,
+	},
+	AmmoSaver = {
+		Name = "탄약 절약", Rarity = "Silver", Category = "총기", MaxStack = 2,
+		Description = "25% 확률로 탄을 쓰지 않음",
+		Apply = function(player) add(player, "AmmoSaveChance", 0.25) end,
+	},
+	Piercing = {
+		Name = "관통탄", Rarity = "Gold", Category = "총기", MaxStack = 2,
+		Description = "탄이 좀비를 1마리 더 꿰뚫음",
+		Apply = function(player) add(player, "Pierce", 1) end,
+	},
+	ExplosiveRounds = {
+		Name = "폭발탄", Rarity = "Prism", Category = "총기", MaxStack = 2,
+		Description = "탄이 맞은 곳에서 폭발(반경 8, 피해 40)",
+		Apply = function(player) add(player, "ExplosiveRounds", 1) end,
+	},
+
+	-- 근접·특수
+	Whirlwind = {
+		Name = "회전 베기", Rarity = "Gold", Category = "전투", MaxStack = 1,
+		Description = "방망이가 앞뿐 아니라 주변 전체를 친다",
+		Apply = function(player) player:SetAttribute("Whirlwind", true) end,
+	},
+	Knockback = {
+		Name = "강타", Rarity = "Silver", Category = "전투", MaxStack = 2,
+		Description = "방망이에 맞은 좀비가 멀리 밀려남",
+		Apply = function(player) add(player, "Knockback", 1) end,
+	},
+	ChainLightning = {
+		Name = "연쇄 번개", Rarity = "Prism", Category = "전투", MaxStack = 2,
+		Description = "공격이 맞으면 주변 좀비 2마리에게 번개가 튐(레벨마다 +1마리, 피해 20)",
+		Apply = function(player) add(player, "ChainLightning", 1) end,
+	},
+	Drone = {
+		Name = "수호 드론", Rarity = "Prism", Category = "특수", MaxStack = 2,
+		Description = "어깨 위 드론이 2초마다 가까운 좀비를 쏨(피해 15)",
+		Apply = function(player) add(player, "DroneLevel", 1) end,
+	},
+	HealingAura = {
+		Name = "치유 오라", Rarity = "Gold", Category = "생존", MaxStack = 3,
+		Description = "5초마다 주변 아군(나 포함) 체력 +5",
+		Apply = function(player) add(player, "HealAura", 1) end,
+	},
+	Looter = {
+		Name = "약탈자", Rarity = "Silver", Category = "유틸", MaxStack = 2,
+		Description = "상자를 뒤질 때 아이템 +1",
+		Apply = function(player) add(player, "LootBonus", 1) end,
+	},
 }
 
 for id, data in AugmentData do

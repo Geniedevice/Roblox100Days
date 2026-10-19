@@ -14,6 +14,7 @@ local DEFINITIONS = {
 	Shoot = "RemoteEvent",
 	Reload = "RemoteEvent",
 	SwingFx = "RemoteEvent", -- 서버 → 모든 클라이언트: 이 캐릭터가 근접 무기를 휘두른다
+	HitMarker = "RemoteEvent", -- 서버 → 쏜 사람: 맞혔다
 }
 
 local folder
