@@ -26,6 +26,8 @@ local function exportPlayer(player)
 		Hunger = player:GetAttribute("Hunger"),
 		Thirst = player:GetAttribute("Thirst"),
 		HasCrossbow = player:GetAttribute("HasCrossbow") == true,
+		HasRifle = player:GetAttribute("HasRifle") == true,
+		GunClip = player:GetAttribute("GunClip"),
 		Augments = AugmentService.Export(player),
 	}
 end
@@ -39,6 +41,8 @@ local function importPlayer(player, data)
 	player:SetAttribute("Hunger", data.Hunger)
 	player:SetAttribute("Thirst", data.Thirst)
 	player:SetAttribute("HasCrossbow", data.HasCrossbow or nil)
+	player:SetAttribute("HasRifle", data.HasRifle or nil)
+	player:SetAttribute("GunClip", data.GunClip)
 	AugmentService.Import(player, data.Augments or {})
 	if player.Character then
 		CombatService.GiveWeapon(player)

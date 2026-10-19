@@ -1,4 +1,6 @@
--- 무기(야구방망이, 석궁) 지급, 서버 판정 공격(좀비 + PvP), 좀비 처치 시 증강 효과 처리.
+-- 무기(야구방망이, 석궁, 소총) 지급, 서버 판정 공격(좀비 + PvP), 좀비 처치 시 증강 효과 처리.
+-- 원거리: 클라이언트가 조준점을 보내면 서버가 장착·쿨다운·탄을 확인하고 레이캐스트로 판정한다.
+-- 소총은 탄창(속성 GunClip)을 쓰고, 비면 인벤토리 탄약(Ammo)으로 재장전한다(속성 Reloading 동안).
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
@@ -14,6 +16,13 @@ local lastShot = {}
 
 local WEAPON_NAME = "야구방망이"
 local CROSSBOW_NAME = "석궁"
+local RIFLE_NAME = "소총"
+
+-- 원거리 무기 이름 → 설정
+local RANGED = {
+	[CROSSBOW_NAME] = { Stats = Config.Ranged, Color = Color3.fromRGB(255, 220, 120), Width = 0.15 },
+	[RIFLE_NAME] = { Stats = Config.Gun, Color = Color3.fromRGB(255, 245, 200), Width = 0.08, UsesAmmo = true },
+}
 
 -- 손에 쥐는 자세. 손잡이 파트는 z축이 긴 막대이고, 메시는 Offset으로 그 축에 맞춰 붙인다.
 local GRIPS = {
@@ -21,7 +30,30 @@ local GRIPS = {
 	[WEAPON_NAME] = { Pos = Vector3.new(0, 0, -1.3), Forward = Vector3.new(0, -1, 0), Right = Vector3.new(1, 0, 0), Up = Vector3.new(0, 0, 1) },
 	-- 총처럼 앞으로 겨눈다: 손잡이 -z(활대 쪽)가 정면, 손은 활대 뒤 방아쇠 자리
 	[CROSSBOW_NAME] = { Pos = Vector3.new(0, -0.1, 0.5), Forward = Vector3.new(0, 0, -1), Right = Vector3.new(1, 0, 0), Up = Vector3.new(0, 1, 0) },
+	-- Roblox Endorsed Weapons Kit AR과 같은 쥐는 법(총구가 -z)
+	[RIFLE_NAME] = { Pos = Vector3.new(0, 0, 0), Forward = Vector3.new(0, 0, -1), Right = Vector3.new(1, 0, 0), Up = Vector3.new(0, 1, 0) },
 }
+
+-- ServerStorage.WeaponModels/<이름>: 파트 하나(MeshPart) 또는 파트 여러 개가 든 Model.
+-- 각 파트의 Offset 속성 = 손잡이 기준 CFrame. 손잡이는 숨기고 이 파트들을 붙인다.
+local function attachVisual(tool, handle, template)
+	local sources = template:IsA("BasePart") and { template } or template:GetChildren()
+	for _, source in sources do
+		if source:IsA("BasePart") then
+			local visual = source:Clone()
+			visual.CFrame = handle.CFrame * (source:GetAttribute("Offset") or CFrame.new())
+			visual.Anchored = false
+			visual.CanCollide = false
+			visual.Massless = true
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = handle
+			weld.Part1 = visual
+			weld.Parent = visual
+			visual.Parent = tool
+		end
+	end
+	handle.Transparency = 1
+end
 
 local function createTool(name, size, color)
 	local tool = Instance.new("Tool")
@@ -42,21 +74,14 @@ local function createTool(name, size, color)
 	handle.Massless = true
 	handle.Parent = tool
 
-	-- ServerStorage.WeaponModels/<이름>이 있으면 손잡이를 숨기고 그 메시를 붙인다(Offset 속성 = 손잡이 기준 회전)
 	local models = ServerStorage:FindFirstChild("WeaponModels")
 	local template = models and models:FindFirstChild(name)
 	if template then
-		local visual = template:Clone()
-		visual.Name = "Visual"
-		visual.CFrame = handle.CFrame * (template:GetAttribute("Offset") or CFrame.new())
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = handle
-		weld.Part1 = visual
-		weld.Parent = visual
-		visual.Parent = tool
-		handle.Transparency = 1
+		attachVisual(tool, handle, template)
 	end
-
+	if RANGED[name] then
+		tool:SetAttribute("Ranged", true) -- 클라이언트가 이 표시로 조준 입력을 붙인다
+	end
 	return tool
 end
 
@@ -146,13 +171,17 @@ function CombatService.Swing(player)
 	end
 	lastSwing[player] = now
 
-	-- 기본 Animate 스크립트는 들고 있는 도구에 "toolanim" 값이 생기면 베기 애니메이션을 재생한다(클래식 검 방식)
-	local bat = character:FindFirstChild(WEAPON_NAME)
-	if bat then
-		local anim = Instance.new("StringValue")
-		anim.Name = "toolanim"
-		anim.Value = "Slash"
-		anim.Parent = bat
+	-- R15는 모든 클라이언트가 크게 휘두르는 동작을 그리고(WeaponFx), R6는 기본 Animate의 베기("toolanim")를 쓴다
+	if humanoid.RigType == Enum.HumanoidRigType.R15 then
+		Remotes.SwingFx:FireAllClients(character)
+	else
+		local bat = character:FindFirstChild(WEAPON_NAME)
+		if bat then
+			local anim = Instance.new("StringValue")
+			anim.Name = "toolanim"
+			anim.Value = "Slash"
+			anim.Parent = bat
+		end
 	end
 
 	local damage = Config.Weapon.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
@@ -174,20 +203,55 @@ function CombatService.Swing(player)
 	end
 end
 
--- 석궁: 클라이언트가 조준점을 보내면 서버가 쿨다운·장착을 확인하고 레이캐스트로 판정한다.
+-- 소총 재장전: 탄창이 덜 찼고 탄약이 있으면 ReloadTime 뒤에 채운다.
+local function reload(player)
+	local clip = player:GetAttribute("GunClip") or 0
+	local ammo = player:GetAttribute("Ammo") or 0
+	if player:GetAttribute("Reloading") or clip >= Config.Gun.ClipSize or ammo <= 0 then
+		return
+	end
+	player:SetAttribute("Reloading", true)
+	task.delay(Config.Gun.ReloadTime, function()
+		if not player.Parent then
+			return
+		end
+		local current = player:GetAttribute("GunClip") or 0
+		local take = math.min(Config.Gun.ClipSize - current, player:GetAttribute("Ammo") or 0)
+		player:SetAttribute("Ammo", (player:GetAttribute("Ammo") or 0) - take)
+		player:SetAttribute("GunClip", current + take)
+		player:SetAttribute("Reloading", nil)
+	end)
+end
+
 local function shoot(player, target)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if typeof(target) ~= "Vector3" or not root or not humanoid or humanoid.Health <= 0
-		or not character:FindFirstChild(CROSSBOW_NAME) then
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	local weapon = tool and RANGED[tool.Name]
+	if typeof(target) ~= "Vector3" or not root or not humanoid or humanoid.Health <= 0 or not weapon then
 		return
 	end
+	local stats = weapon.Stats
 
-	local cooldown = Config.Ranged.Cooldown / (1 + (player:GetAttribute("AttackSpeedBonus") or 0))
+	local cooldown = stats.Cooldown / (1 + (player:GetAttribute("AttackSpeedBonus") or 0))
 	local now = os.clock()
 	if now - (lastShot[player] or 0) < cooldown then
 		return
+	end
+	if weapon.UsesAmmo then
+		local clip = player:GetAttribute("GunClip") or 0
+		if player:GetAttribute("Reloading") then
+			return
+		end
+		if clip <= 0 then
+			reload(player)
+			return
+		end
+		player:SetAttribute("GunClip", clip - 1)
+		if clip - 1 <= 0 then
+			reload(player)
+		end
 	end
 	lastShot[player] = now
 
@@ -196,7 +260,7 @@ local function shoot(player, target)
 	if offset.Magnitude < 0.1 then
 		return
 	end
-	local direction = offset.Unit * Config.Ranged.Range
+	local direction = offset.Unit * stats.Range
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { character }
@@ -210,14 +274,14 @@ local function shoot(player, target)
 	bolt.CanCollide = false
 	bolt.CanQuery = false
 	bolt.Material = Enum.Material.Neon
-	bolt.Color = Color3.fromRGB(255, 220, 120)
-	bolt.Size = Vector3.new(0.15, 0.15, length)
+	bolt.Color = weapon.Color
+	bolt.Size = Vector3.new(weapon.Width, weapon.Width, length)
 	bolt.CFrame = CFrame.lookAt(origin, hitPosition) * CFrame.new(0, 0, -length / 2)
 	bolt.Parent = workspace
-	Debris:AddItem(bolt, 0.15)
+	Debris:AddItem(bolt, 0.1)
 
 	local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
-	local damage = Config.Ranged.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
+	local damage = stats.Damage * (1 + (player:GetAttribute("DamageBonus") or 0))
 	if model and CollectionService:HasTag(model, "Zombie") then
 		CombatService.DamageZombie(model, damage, player)
 	elseif model then
@@ -233,7 +297,7 @@ local function hasTool(player, backpack, name)
 	return backpack:FindFirstChild(name) or (character and character:FindFirstChild(name))
 end
 
--- 캐릭터가 생길 때마다 부른다. 석궁은 HasCrossbow면 같이 준다.
+-- 캐릭터가 생길 때마다 부른다. 제작한 무기(Has<Weapon> 속성)는 죽어도 다시 준다.
 function CombatService.GiveWeapon(player)
 	local backpack = player:WaitForChild("Backpack")
 	if not hasTool(player, backpack, WEAPON_NAME) then
@@ -244,9 +308,10 @@ function CombatService.GiveWeapon(player)
 		bat.Parent = backpack
 	end
 	if player:GetAttribute("HasCrossbow") and not hasTool(player, backpack, CROSSBOW_NAME) then
-		local crossbow = createTool(CROSSBOW_NAME, Vector3.new(0.5, 0.5, 2.5), Color3.fromRGB(70, 50, 35))
-		crossbow:SetAttribute("Ranged", true) -- 클라이언트가 이 표시로 조준 입력을 붙인다
-		crossbow.Parent = backpack
+		createTool(CROSSBOW_NAME, Vector3.new(0.5, 0.5, 2.5), Color3.fromRGB(70, 50, 35)).Parent = backpack
+	end
+	if player:GetAttribute("HasRifle") and not hasTool(player, backpack, RIFLE_NAME) then
+		createTool(RIFLE_NAME, Vector3.new(0.5, 1, 3), Color3.fromRGB(40, 40, 45)).Parent = backpack
 	end
 end
 
@@ -257,6 +322,7 @@ end
 
 function CombatService.Start()
 	Remotes.Shoot.OnServerEvent:Connect(shoot)
+	Remotes.Reload.OnServerEvent:Connect(reload)
 end
 
 return CombatService

@@ -46,9 +46,16 @@ Config.ZombieAI = {
 -- 보스 내려찍기: 쿨다운마다 반경 안 플레이어에게 피해
 Config.Boss = { SlamCooldown = 6, SlamRadius = 14, SlamDamage = 30 }
 
-Config.Weapon = { Damage = 25, Range = 7, Cooldown = 0.5 }
+Config.Weapon = { Damage = 25, Range = 7, Cooldown = 0.5, SwingTime = 0.45 } -- 야구방망이(SwingTime = 크게 휘두르는 동작 길이)
 Config.Ranged = { Damage = 35, Range = 90, Cooldown = 1.2 } -- 석궁
+Config.Gun = { Damage = 30, Range = 150, Cooldown = 0.2, ClipSize = 12, ReloadTime = 2 } -- 소총(탄약 1발씩)
 Config.PvP = { Enabled = true, DamageScale = 1 } -- 플레이어끼리 주는 피해 배율
+
+-- 무기 애니메이션(Roblox 공식 Endorsed Weapons Kit, R15). 재생 확인한 것만 쓴다.
+Config.WeaponAnimations = {
+	RifleHold = "rbxassetid://3972164452", -- 소총을 든 동안 반복
+	RifleReload = "rbxassetid://3972131105",
+}
 
 Config.Survival = {
 	Max = 100,
@@ -65,6 +72,7 @@ Config.Items = {
 	Food = { Name = "통조림", Hunger = 30 },
 	Water = { Name = "생수", Thirst = 35 },
 	Medkit = { Name = "구급상자", Heal = 40 },
+	Ammo = { Name = "탄약" }, -- 소총 재장전에 쓴다
 }
 
 -- 파밍 상자. Workspace.LootSpots의 파츠(속성 Container = 아래 이름)마다 놓인다.
@@ -72,7 +80,7 @@ Config.Items = {
 Config.Loot = {
 	Crate = {
 		Label = "나무 상자", HoldTime = 1.5, Respawn = 90,
-		Drops = { { Item = "Wood", Min = 2, Max = 4 }, { Item = "Stone", Min = 0, Max = 2 } },
+		Drops = { { Item = "Wood", Min = 2, Max = 4 }, { Item = "Stone", Min = 0, Max = 2 }, { Item = "Ammo", Min = 0, Max = 3 } },
 	},
 	Fridge = {
 		Label = "냉장고", HoldTime = 1, Respawn = 120,
@@ -84,7 +92,7 @@ Config.Loot = {
 	},
 	Car = {
 		Label = "버려진 차", HoldTime = 2.5, Respawn = 150,
-		Drops = { { Item = "Stone", Min = 2, Max = 4 }, { Item = "Food", Min = 0, Max = 1 }, { Item = "Medkit", Min = 0, Max = 1 } },
+		Drops = { { Item = "Stone", Min = 2, Max = 4 }, { Item = "Food", Min = 0, Max = 1 }, { Item = "Medkit", Min = 0, Max = 1 }, { Item = "Ammo", Min = 0, Max = 6 } },
 	},
 }
 
@@ -100,6 +108,7 @@ Config.Crafting = {
 		Place = { Health = 500, Size = Vector3.new(8, 6, 1.6), Color = Color3.fromRGB(110, 110, 118), Material = Enum.Material.CorrodedMetal },
 	},
 	{ Id = "Crossbow", Name = "석궁", Cost = { Wood = 8, Stone = 4 }, Weapon = "Crossbow" }, -- 한 판에 한 번, 죽어도 유지
+	{ Id = "Rifle", Name = "소총", Cost = { Stone = 14, Wood = 4 }, Weapon = "Rifle" }, -- 탄약은 파밍(차·나무 상자)
 }
 
 Config.Barricade = { PlaceDistance = 6 } -- 플레이어 앞 몇 스터드에 설치할지

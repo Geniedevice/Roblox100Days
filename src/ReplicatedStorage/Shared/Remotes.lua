@@ -12,6 +12,8 @@ local DEFINITIONS = {
 	UseItem = "RemoteFunction",
 	RequestCraft = "RemoteFunction",
 	Shoot = "RemoteEvent",
+	Reload = "RemoteEvent",
+	SwingFx = "RemoteEvent", -- 서버 → 모든 클라이언트: 이 캐릭터가 근접 무기를 휘두른다
 }
 
 local folder
