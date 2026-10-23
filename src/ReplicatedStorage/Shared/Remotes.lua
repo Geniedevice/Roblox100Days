@@ -1,27 +1,14 @@
 -- 서버가 처음 require할 때 Remote를 만들고, 클라이언트는 기다렸다가 가져간다.
+-- 클라이언트가 보내는 것은 전부 "요청"이고, 서버가 검사해서 적용한다.
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DEFINITIONS = {
-	DayChanged = "RemoteEvent",
-	GameMessage = "RemoteEvent",
-	AugmentOffer = "RemoteEvent",
-	AugmentClosed = "RemoteEvent",
-	ChooseAugment = "RemoteFunction",
-	RerollAugment = "RemoteFunction",
-	UseItem = "RemoteFunction",
-	RequestCraft = "RemoteFunction",
-	Shoot = "RemoteEvent",
-	Reload = "RemoteEvent",
-	SwingFx = "RemoteEvent", -- 서버 → 모든 클라이언트: 이 캐릭터가 근접 무기를 휘두른다
-	HitMarker = "RemoteEvent", -- 서버 → 쏜 사람: 맞혔다
-	-- 컴퍼니
-	Buy = "RemoteFunction", -- (종류 "Equipment"|"Augment", Id) → 성공, 문구
-	RerollShop = "RemoteFunction",
-	ShopOffers = "RemoteEvent", -- 서버 → 플레이어: 이번에 살 수 있는 증강 Id 목록
-	OpenShop = "RemoteEvent", -- 서버 → 플레이어: 단말기를 눌렀다
-	SelectWorld = "RemoteEvent", -- 다음에 갈 세상 Id
-	Launch = "RemoteEvent", -- 출발 레버
+	Interact = "RemoteEvent", -- 클라 → 서버: (종류, 대상 Instance, 인자) 농지·잡초 등을 눌렀다
+	Feedback = "RemoteEvent", -- 서버 → 클라: (종류, 정보) 동작 애니메이션·VFX·알림의 신호
+	Dialogue = "RemoteEvent", -- 서버 → 클라: 대사·상점·닫기 / 클라 → 서버: 고른 선택지 번호(0 = 닫기)
+	Shop = "RemoteFunction", -- 클라 → 서버: (상점 Id, 상품 Id) → 성공, 문구
+	Dex = "RemoteFunction", -- 클라 → 서버: () → 내 도감(분류·칸 목록)
 }
 
 local folder

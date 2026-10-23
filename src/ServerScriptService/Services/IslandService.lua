@@ -1,0 +1,223 @@
+-- 플레이어마다 시드 하늘섬(복셀 블록, 4×4 청크 + 산 땅)을 서버 슬롯에 지어 주고, 그 섬에서 (다시) 태어나게 한다. 나가면 섬을 지운다.
+-- 블록은 IslandGen이 시드·산 땅으로 정하고 IslandBuilder가 Part로 짓는다(Workspace.Islands/Island_<UserId>/Terrain).
+-- 땅을 사면 Rebuild가 지형(Terrain)만 새로 짓고 바꿔 끼운다. 밭·가구·NPC·집안일은 섬 Model에 따로 있어 그대로 남는다.
+-- 다음에 붙을 땅 자리에는 반투명 구름 판과 가격 팻말을 띄운다. 섬에서 떨어지면 죽지 않고 스폰으로 돌아온다.
+-- 남의 섬에 놀러 가면(MoveTo) 그 섬이 "지금 있는 섬"이 되고 Visiting 속성(주인 UserId)이 붙는다. 떨어지면 그 섬 스폰으로,
+-- 다시 태어나면 내 섬으로. 주인이 나가 섬이 지워지면 거기 있던 사람은 집으로 간다.
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+local IslandBuilder = require(script.Parent.IslandBuilder)
+local IslandGen = require(script.Parent.IslandGen)
+
+local CELL = IslandGen.CELL
+local CHUNK_STUDS = IslandGen.CHUNK * CELL
+local SLOT_SPACING = 1200 -- 슬롯 간격(스터드). 6×6청크로 넓힌 섬 + 떠 있는 작은 섬이 지름 약 450
+local FALL_DEPTH = 40 -- 섬 밑면보다 이만큼 떨어지면 스폰으로
+local RESPAWN_DELAY = 3
+local CHUNK_BASE, CHUNK_STEP = 200, 150 -- 땅 값 = 200 + 150 × 이미 산 땅 수
+
+local IslandService = {}
+IslandService.Rebuilt = Instance.new("BindableEvent") -- (player, record) 지형을 새로 지은 뒤
+local islands = {} -- [player] = 섬 정보(Spawn이 돌려주는 record)
+local here = {} -- [player] = 지금 있는 섬 record(내 섬 또는 놀러 간 섬)
+local slots = {} -- [slot] = player
+local folder
+
+function IslandService.ChunkPrice(profile)
+	return CHUNK_BASE + CHUNK_STEP * #profile.Chunks
+end
+
+-- 다음 땅 자리 위 구름 판(누르기·충돌 없음)
+local function ghost(record, profile)
+	if record.Ghost then
+		record.Ghost:Destroy()
+		record.Ghost = nil
+	end
+	local spot = IslandGen.NextChunk(profile.Chunks)
+	if not spot then
+		return
+	end
+	local plate = Instance.new("Part")
+	plate.Name = "NextChunk"
+	plate.Anchored, plate.CanCollide, plate.CanQuery, plate.CanTouch, plate.CastShadow = true, false, false, false, false
+	plate.Size = Vector3.new(CHUNK_STUDS - 2, 1, CHUNK_STUDS - 2)
+	plate.Position = record.Origin + Vector3.new((spot.X + 0.5) * CHUNK_STUDS, record.YardY - CELL - 0.5, (spot.Z + 0.5) * CHUNK_STUDS)
+	plate.Color = Color3.fromRGB(235, 245, 255)
+	plate.Material = Enum.Material.SmoothPlastic
+	plate.Transparency = 0.75
+	local tag = Instance.new("BillboardGui")
+	tag.Size = UDim2.fromOffset(260, 60)
+	tag.StudsOffset = Vector3.new(0, 8, 0)
+	tag.MaxDistance = 220
+	tag.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(255, 250, 235)
+	label.TextStrokeTransparency = 0.3
+	label.TextStrokeColor3 = Color3.fromRGB(80, 110, 160)
+	label.Text = string.format("다음 땅 · %d코인\n안내인 루미에게서 살 수 있어요", IslandService.ChunkPrice(profile))
+	label.Parent = tag
+	tag.Parent = plate
+	plate.Parent = record.Model
+	record.Ghost = plate
+end
+
+local function build(record, profile)
+	local island = IslandGen.Generate(profile.Seed, profile.Chunks)
+	local terrain = IslandBuilder.Build(island, record.Origin)
+	terrain.Parent = record.Model
+	if record.Terrain then
+		record.Terrain:Destroy() -- 새 지형을 붙인 뒤에 지워서 발밑이 비는 프레임이 없게
+	end
+	record.Terrain = terrain
+	record.Blocks = terrain.Blocks -- 땅 블록(레이캐스트로 지면을 찾을 때)
+	record.Plants = terrain.Plants -- 나무·버섯·선인장 블록
+	record.Water = terrain.Water
+	record.Gen = island -- 구역(ZoneAt)·밭 자리(Fields)·NPC 자리(Npc)·획득물 표(Loot)
+	record.Model:SetAttribute("Chunks", HttpService:JSONEncode(island.Chunks)) -- 클라이언트 구역 판정(핫바·구역 칩)
+	record.Concept = island.Concept
+	record.FallY = record.Origin.Y + island.Min.Y * CELL - FALL_DEPTH
+	local spawn = record.Origin + island.Spawn * CELL + Vector3.new(0, 3, 0)
+	record.Spawn = CFrame.lookAt(spawn, spawn - Vector3.zAxis) -- 북쪽(안내인·노점 거리)을 바라본다
+	ghost(record, profile)
+end
+
+-- profile.Seed가 없으면(새 플레이어) 새 시드를 준다. DataService가 profile을 저장하니 다음 접속에도 같은 섬이다.
+-- 섬 정보를 돌려준다. 캐릭터는 다른 서비스가 섬을 채운 뒤 Main이 낸다.
+function IslandService.Spawn(player, profile)
+	profile.Seed = profile.Seed or Random.new():NextInteger(1, 2147483646)
+
+	local slot = 1
+	while slots[slot] do
+		slot += 1
+	end
+	slots[slot] = player
+	local origin = Vector3.new(slot * SLOT_SPACING, 0, 0)
+
+	local model = Instance.new("Model")
+	model.Name = "Island_" .. player.UserId
+	model:SetAttribute("Owner", player.UserId)
+	model:SetAttribute("Seed", profile.Seed)
+	model:SetAttribute("Origin", origin)
+	local record = {
+		Slot = slot,
+		Model = model,
+		Origin = origin,
+		YardY = origin.Y + IslandGen.YARD * CELL, -- 마당 윗면(스터드)
+	}
+	build(record, profile)
+	model:SetAttribute("Concept", record.Concept)
+	model.Parent = folder
+	islands[player] = record
+	player:SetAttribute("IslandSeed", profile.Seed)
+	player:SetAttribute("IslandConcept", record.Concept)
+	player:SetAttribute("IslandChunks", #record.Gen.Chunks)
+
+	player.CharacterAdded:Connect(function(character)
+		local home = islands[player]
+		if home then
+			here[player] = home
+			player:SetAttribute("Visiting", nil)
+			task.defer(character.PivotTo, character, home.Spawn) -- 기본 스폰 배치가 끝난 뒤에 옮긴다
+		end
+		character:WaitForChild("Humanoid").Died:Connect(function()
+			task.wait(RESPAWN_DELAY)
+			if islands[player] then
+				player:LoadCharacter()
+			end
+		end)
+	end)
+	return record
+end
+
+-- 땅을 산 뒤: 지형만 새로 짓고 Rebuilt를 알린다(밭 자리·광석이 바뀐다)
+function IslandService.Rebuild(player, profile)
+	local record = islands[player]
+	if not record then
+		return nil
+	end
+	build(record, profile)
+	player:SetAttribute("IslandChunks", #record.Gen.Chunks)
+	IslandService.Rebuilt:Fire(player, record)
+	return record
+end
+
+function IslandService.Get(player)
+	return islands[player]
+end
+
+-- 섬 안의 Instance → 그 섬 record, 주인 Player(섬 밖이거나 주인이 없으면 nil)
+function IslandService.Find(instance)
+	local model = instance
+	while model and model.Parent ~= folder do
+		model = model.Parent
+	end
+	local owner = model and Players:GetPlayerByUserId(model:GetAttribute("Owner") or 0)
+	local record = owner and islands[owner]
+	if record and record.Model == model then
+		return record, owner
+	end
+	return nil
+end
+
+-- record 섬 스폰으로 옮긴다(내 섬이면 Visiting을 지운다)
+function IslandService.MoveTo(player, record)
+	here[player] = record
+	player:SetAttribute("Visiting", if record == islands[player] then nil else record.Model:GetAttribute("Owner"))
+	if player.Character then
+		player.Character:PivotTo(record.Spawn)
+	end
+end
+
+-- 블록 칸 좌표(x, z, 소수 가능) → 마당 윗면 위의 월드 위치
+function IslandService.YardPoint(island, x, z)
+	return Vector3.new(island.Origin.X + x * CELL, island.YardY, island.Origin.Z + z * CELL)
+end
+
+-- 월드 위치 → 그 칸의 구역 Id(섬 밖이면 nil)
+function IslandService.ZoneAt(island, position)
+	local relative = position - island.Origin
+	return island.Gen.ZoneAt(math.floor(relative.X / CELL), math.floor(relative.Z / CELL))
+end
+
+function IslandService.Remove(player)
+	here[player] = nil
+	local island = islands[player]
+	if not island then
+		return
+	end
+	islands[player] = nil
+	slots[island.Slot] = nil
+	for visitor, record in here do
+		if record == island and islands[visitor] then
+			IslandService.MoveTo(visitor, islands[visitor])
+		end
+	end
+	island.Model:Destroy()
+end
+
+function IslandService.Start()
+	folder = workspace:FindFirstChild("Islands") or Instance.new("Folder")
+	folder.Name = "Islands"
+	folder.Parent = workspace
+	Players.CharacterAutoLoads = false -- 섬이 지어진 뒤에 캐릭터를 낸다
+
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			for player, island in here do
+				local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if root and root.Position.Y < island.FallY then
+					root.AssemblyLinearVelocity = Vector3.zero
+					player.Character:PivotTo(island.Spawn)
+				end
+			end
+		end
+	end)
+end
+
+return IslandService
