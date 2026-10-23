@@ -6,3 +6,10 @@
 *.log
 backups/
 .claude/settings.local.json
+# CCGS session state and personal config
+production/session-state/
+production/session-logs/
+project.local.yaml
+CLAUDE.local.md
+.claude/agent-memory/
+.claude/worktrees/

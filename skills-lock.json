@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "dialogue-systems": {
+      "source": "gamedev-skills/awesome-gamedev-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/disciplines/dialogue-systems/SKILL.md",
+      "computedHash": "d42e77a7f92b1178e559761d54dd50b82e6ce4e40dd4a3ccfbb740068fd6f6d3"
+    },
+    "procedural-gen": {
+      "source": "gamedev-skills/awesome-gamedev-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/disciplines/procedural-gen/SKILL.md",
+      "computedHash": "a66b0ec9c81bdefd6829d3386aac61d9b34fc1d3c99cd160354043e23e434f2d"
+    },
+    "roblox-datastores": {
+      "source": "gamedev-skills/awesome-gamedev-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/other-engines/roblox-datastores/SKILL.md",
+      "computedHash": "34a35abe5dffc598aced99d817c2ca54c9d5bd3ee19bf23229857469129ba83c"
+    },
+    "roblox-luau": {
+      "source": "gamedev-skills/awesome-gamedev-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/other-engines/roblox-luau/SKILL.md",
+      "computedHash": "f6895b1ecbbdc2f7252887ec4f80285ccf72c999d5321c5530a4c5f6cc95eafb"
+    },
+    "router": {
+      "source": "gamedev-skills/awesome-gamedev-agent-skills",
+      "sourceType": "github",
+      "skillPath": "router/SKILL.md",
+      "computedHash": "b800f54ff3eca94c20aaa661e9546b8a44d999d2e774984afbdebc3f8cae0358"
+    }
+  }
+}

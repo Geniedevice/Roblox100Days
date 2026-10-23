@@ -1,0 +1,33 @@
+# CCGS(Claude Code Game Studios) 프로젝트 설정 — 스킬·훅이 읽는 단일 기준. 스키마: .claude/docs/effects-map.md
+# 바꿀 때는 /settings 를 쓴다. 개인 설정은 project.local.yaml(gitignore)에.
+
+schema_version: 1
+
+framework:
+  version: 1.2.0
+  last_upgraded: 2026-10-23
+
+project:
+  name: "Sky Island Farm"
+  stage: "Pre-Production" # 시드 섬·저장·농사 MVP 구현 중
+
+# CCGS는 Godot/Unity/Unreal만 안다. Roblox는 여기와 docs/engine-reference/roblox/ 로 직접 맞췄다.
+# 코드 루트는 src/ (플레이스 안 스크립트의 미러, 파일 이름 = 인스턴스 이름). 편집은 Studio MCP로.
+engine:
+  name: "Roblox"
+  version: "Roblox Studio (2026-10)"
+  language: "Luau"
+  rendering: "Roblox Future/ShadowMap (플레이스 설정)"
+  physics: "Roblox"
+
+specialists:
+  code: roblox-specialist
+  ui: roblox-specialist
+
+modes:
+  rigor: standard # GDD 5필수 섹션(+수치가 있으면 Formulas), 게임 컨셉, 시스템 인덱스
+  automation: autonomous # 사용자가 확인 질문 없이 끝까지 진행하길 원한다. 결정은 production/session-logs/decision-log.md에 남긴다
+  automation_always_ask: [] # Studio 저장·퍼블리시는 원래 사람만 할 수 있다
+
+updates:
+  check: false # 세션마다 GitHub에 새 버전을 묻지 않는다
