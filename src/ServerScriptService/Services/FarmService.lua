@@ -4,8 +4,9 @@
 -- 섬 명물 작물(Loot.SpecialCrop, 시드로 정해짐)은 거둘 때 25% 확률로 하나 더.
 -- 작물은 실제 시간으로 자라고(섬을 비운 동안에도) 시들지 않는다. 저장은 profile.Tiles["번호"] =
 -- { Tilled, Crop, PlantedAt, WateredAt }뿐이고, 자란 단계(0 씨앗 ~ 3 수확)는 시각으로 계산한다.
--- 물을 주면 그때부터 Grow/2초 동안 1.5배 빨리 자란다(작물마다 한 번).
+-- 물을 주면 그때부터 Grow/2초 동안 1.5배 빨리 자란다(작물마다 한 번). 섬 연합 이웃이 있으면 주인 UnionBonus만큼 더 빨리(island-union.md).
 -- 남의 밭(party-visiting.md): 파티원은 물을 줄 수 있고, 주인이 "파티원 수확"을 켜면 거둘 수도 있다. 작물은 주인 것이다.
+-- 도우미 동물(pets.md)은 FindJob으로 일을 찾고 Help로 주인 대신 한 번 누른다(연출은 주인 캐릭터 동작 없이).
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -51,31 +52,36 @@ local function buildCrop(tile, cropId, stage)
 	model.Parent = tile
 end
 
--- 0..1 자란 정도
-local function progress(state, crop, now)
-	local boost = state.WateredAt and math.clamp(now - state.WateredAt, 0, crop.Grow / 2) * 0.5 or 0
-	return math.clamp((now - state.PlantedAt + boost) / crop.Grow, 0, 1) -- 서버 시계가 뒤로 가도 0 아래로 가지 않게
+-- 성장 배수 = 1 + 연합 보너스(UnionService가 주인에게 단다)
+local function rateOf(owner)
+	return 1 + (owner:GetAttribute("UnionBonus") or 0)
 end
 
-local function stageOf(state, now)
+-- 0..1 자란 정도
+local function progress(state, crop, now, rate)
+	local boost = state.WateredAt and math.clamp(now - state.WateredAt, 0, crop.Grow / 2) * 0.5 or 0
+	return math.clamp((now - state.PlantedAt + boost) * rate / crop.Grow, 0, 1) -- 서버 시계가 뒤로 가도 0 아래로 가지 않게
+end
+
+local function stageOf(state, now, rate)
 	local crop = state.Crop and Crops[state.Crop]
 	if not crop then
 		return nil
 	end
-	local p = progress(state, crop, now)
+	local p = progress(state, crop, now, rate)
 	return if p >= 1 then 3 else math.floor(p * 3), crop, p
 end
 
 -- 다 자랄 때까지 남은 실제 초(물 효과가 남은 동안은 1.5배로 계산)
-local function secondsLeft(state, crop, p, now)
-	local need = (1 - p) * crop.Grow
+local function secondsLeft(state, crop, p, now, rate)
+	local need = (1 - p) * crop.Grow / rate
 	local boosted = if state.WateredAt then math.max(0, state.WateredAt + crop.Grow / 2 - now) else 0
 	return if need <= boosted * 1.5 then need / 1.5 else boosted + (need - boosted * 1.5)
 end
 
 -- 농지 Part를 저장 상태에 맞춘다(바뀐 것만 다시 만든다)
-local function refresh(tile, state, now)
-	local stage, crop = stageOf(state, now)
+local function refresh(tile, state, now, rate)
+	local stage, crop = stageOf(state, now, rate)
 	tile.Color = if not state.Tilled then COLORS.Grass elseif state.WateredAt and stage ~= 3 then COLORS.Wet else COLORS.Soil
 	tile.Material = if state.Tilled then Enum.Material.Ground else Enum.Material.Grass
 	tile:SetAttribute("Tilled", state.Tilled == true)
@@ -105,15 +111,30 @@ local function toast(player, text, tile) -- tile이 있으면 거절 연출(테�
 	Remotes.Feedback:FireClient(player, "Toast", { Text = text, Part = tile })
 end
 
--- player = 누른 사람, owner = 밭 주인(같을 수 있다)
-local function onTile(player, owner, tile, seedId)
+-- 그 농지에서 지금 할 일(Till·Plant·Water·Harvest). 물 준 뒤 자라는 중이면 nil
+local function jobOf(state, now, rate)
+	local stage = stageOf(state, now, rate)
+	if not state.Tilled then
+		return "Till"
+	elseif not stage then
+		return "Plant"
+	elseif stage == 3 then
+		return "Harvest"
+	end
+	return if state.WateredAt then nil else "Water"
+end
+
+-- player = 누른 사람, owner = 밭 주인(같을 수 있다), byPet = 도우미 동물이 주인 대신 했다(주인 캐릭터는 움직이지 않는다)
+local function onTile(player, owner, tile, seedId, byPet)
 	local profile = DataService.Get(owner)
 	local index = tile:GetAttribute("Index")
 	local key = tostring(index)
 	local state = profile.Tiles[key] or {}
 	local now = os.time()
-	local stage, crop, p = stageOf(state, now)
+	local rate = rateOf(owner)
+	local stage, crop, p = stageOf(state, now, rate)
 	local helper = player ~= owner
+	local who = if byPet then nil else player
 
 	if helper and (not state.Tilled or not crop) then
 		return toast(player, "친구 밭에서는 물주기만 도와줄 수 있어요", tile)
@@ -125,7 +146,7 @@ local function onTile(player, owner, tile, seedId)
 
 	if not state.Tilled then
 		state.Tilled = true
-		feedback(player, "Till", tile)
+		feedback(who, "Till", tile)
 	elseif not crop then
 		local seed = type(seedId) == "string" and Crops[seedId]
 		if not seed then
@@ -134,22 +155,22 @@ local function onTile(player, owner, tile, seedId)
 			return toast(player, seed.Name .. " 씨앗이 없어요. 정원사 모모에게 살 수 있어요", tile)
 		end
 		state.Crop, state.PlantedAt, state.WateredAt = seedId, now, nil
-		feedback(player, "Plant", tile, { Item = seedId })
+		feedback(who, "Plant", tile, { Item = seedId })
 	elseif stage < 3 and not state.WateredAt then
 		state.WateredAt = now
-		feedback(player, "Water", tile)
+		feedback(who, "Water", tile)
 		if helper then
 			toast(owner, player.DisplayName .. "님이 " .. crop.Name .. "에 물을 줬어요")
 		end
 	elseif stage < 3 then
-		local left = math.ceil(secondsLeft(state, crop, p, now) / 60)
+		local left = math.ceil(secondsLeft(state, crop, p, now, rate) / 60)
 		return toast(player, string.format("%s 잘 자라는 중이에요. 약 %d분 남았어요", Lines.Josa(crop.Name, "이", "가"), left), tile)
 	else
 		local island = IslandService.Get(owner)
 		local special = island and island.Gen.Loot.SpecialCrop == state.Crop
 		local amount = if special and math.random() < Loot.SPECIAL_CROP_CHANCE then 2 else 1
 		Inventory.Add(owner, state.Crop, amount)
-		feedback(player, "Harvest", tile, { Item = state.Crop, Count = amount, Gift = helper, -- Gift: 핫바로 날아가지 않는다
+		feedback(who, "Harvest", tile, { Item = state.Crop, Count = amount, Gift = helper, -- Gift: 핫바로 날아가지 않는다
 			Text = string.format("+%d %s%s", amount, crop.Name, if helper then " → " .. owner.DisplayName
 				elseif amount > 1 then " · 섬 명물!" else "") })
 		DexService.Record(owner, "Crops", state.Crop)
@@ -163,7 +184,37 @@ local function onTile(player, owner, tile, seedId)
 		end
 	end
 	profile.Tiles[key] = state
-	refresh(tile, state, now)
+	refresh(tile, state, now, rate)
+end
+
+-- 도우미 동물: 주인 농지 중 jobs(집합)에 맞는 일이 있는 칸에서 from에 가장 가까운 것 → 농지, 일
+function FarmService.FindJob(owner, jobs, from)
+	local tiles, profile = farms[owner], DataService.Get(owner)
+	if not tiles or not profile then
+		return nil
+	end
+	local now, rate = os.time(), rateOf(owner)
+	local best, bestJob, bestDistance
+	for i, tile in tiles do
+		local job = jobOf(profile.Tiles[tostring(i)] or {}, now, rate)
+		local distance = job and jobs[job] and (tile.Position - from).Magnitude
+		if distance and (not bestDistance or distance < bestDistance) then
+			best, bestJob, bestDistance = tile, job, distance
+		end
+	end
+	return best, bestJob
+end
+
+-- 도우미 동물이 주인 대신 한 번 누른다. 그사이 상태가 바뀌어 그 일이 아니면 false
+function FarmService.Help(owner, tile, job, seedId)
+	local tiles, profile = farms[owner], DataService.Get(owner)
+	local index = tile:GetAttribute("Index")
+	if not tiles or not profile or tiles[index] ~= tile
+		or jobOf(profile.Tiles[tostring(index)] or {}, os.time(), rateOf(owner)) ~= job then
+		return false
+	end
+	onTile(owner, owner, tile, seedId, true)
+	return true
 end
 
 function FarmService.FieldPrice(profile)
@@ -218,6 +269,7 @@ function FarmService.Load(player, island)
 	folder.Name = "Farm"
 	local tiles = {}
 	local now = os.time()
+	local rate = rateOf(player)
 	local open = math.min(profile.Fields, #island.Gen.Fields)
 	for f, field in island.Gen.Fields do
 		if f > open then
@@ -236,7 +288,7 @@ function FarmService.Load(player, island)
 			tile:SetAttribute("Owner", player.UserId)
 			tile:SetAttribute("Index", i)
 			CollectionService:AddTag(tile, "FarmTile")
-			refresh(tile, profile.Tiles[tostring(i)] or {}, now)
+			refresh(tile, profile.Tiles[tostring(i)] or {}, now, rate)
 			tile.Parent = folder
 			tiles[i] = tile
 		end
@@ -296,10 +348,11 @@ function FarmService.Start()
 			local now = os.time()
 			for player, tiles in farms do
 				local profile = DataService.Get(player)
+				local rate = rateOf(player)
 				for i, tile in tiles do
 					local state = profile and profile.Tiles[tostring(i)]
 					if state and state.Crop then
-						refresh(tile, state, now)
+						refresh(tile, state, now, rate)
 					end
 				end
 			end

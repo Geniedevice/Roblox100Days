@@ -13,7 +13,7 @@ local LOCK_TTL = 300 -- 초. 자동 저장이 갱신하므로, 이보다 오래�
 local DEFAULT = {
 	Version = 1,
 	Coins = 30,
-	Items = {}, -- [아이템 Id] = 개수 (씨앗 "Seed_<작물>", 수확물 "<작물>", 가구 "<가구 Id>", "Fish_<물고기>", "Ore_<광석>")
+	Items = {}, -- [아이템 Id] = 개수 (씨앗 "Seed_<작물>", 수확물 "<작물>", 가구 "<가구 Id>", "Fish_<물고기>", "Ore_<광석>", 도우미 동물 "Pet_<Id>")
 	Tiles = {}, -- [농지 번호 문자열] = { Tilled, Crop, PlantedAt, WateredAt } (밭 k의 칸 = 9k−8 .. 9k)
 	Fields = 1, -- 연 밭 수(밭 하나 = 3×3 농지, 안내인에게서 더 산다)
 	Chunks = {}, -- 산 땅 { { X, Z, Zone } } (시작 섬 16청크 밖, 산 순서). 섬 모양 = 시드 + 이 목록
@@ -24,6 +24,7 @@ local DEFAULT = {
 	Npc = {}, -- [NPC Id] = 대화 변수(Met 등)
 	Chores = 0, -- 섬에 남아 있는 집안일 개수(자리는 매번 새로 고른다)
 	LastSeen = 0, -- 마지막 저장 시각(os.time)
+	-- Union = { Id }: 섬 연합(UnionService). 기본값 없음 = 혼자
 }
 
 -- 옛 데이터에 없는 칸을 기본값으로 채운다(표는 복사해서 플레이어끼리 공유되지 않게).

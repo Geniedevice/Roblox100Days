@@ -18,6 +18,8 @@
    5. 다 자람 → 수확물 1개를 인벤토리에 넣는다(`Harvest`). `Regrow`가 있으면 덤불은 남고 열매만 다시 자란다. 없으면 농지는 갈린 채 빈다.
 4. 단계: 0 씨앗 → 1 새싹 → 2 성장 → 3 수확 가능. 단계는 저장하지 않고 시각으로 계산한다.
 5. 서버는 1초마다 단계를 다시 계산해 바뀐 농지만 작물 모델을 바꾼다.
+6. **밭 안내**(2026-10-24): 캐릭터 9스터드 안 농지 중 바라보는 쪽(앞 3스터드)에 가장 가까운 칸 하나에 프롬프트를 띄운다(E · 게임패드 X · 모바일 버튼). 글은 위 3의 상태대로 "밭 갈기" / "씨앗 뿌리기"(고른 씨앗과 개수, 없으면 "씨앗 없음 · 모모에게서 사요") / "물주기" / "수확하기", 물 준 뒤 자라는 중이면 "살펴보기"(누르면 남은 시간 안내). 살펴보기는 다른 할 일이 있는 칸이 없을 때만 고른다. 프롬프트는 클라이언트에만 있고 누르면 농지를 누른 것과 같은 요청을 보낸다(`Hud`). 친구 밭은 파티·연합이면 물주기, 주인이 "파티원 수확"을 켰으면 수확하기만 보인다. 패널이 열려 있거나 꾸미기 모드면 숨긴다.
+7. **도우미 동물**(pets.md): `FarmService.FindJob`으로 할 일이 있는 칸을 찾고 `FarmService.Help`로 주인 대신 위 3의 처리를 한 번 한다(가는 사이 상태가 바뀌면 하지 않는다).
 
 ## Formulas
 
@@ -28,6 +30,7 @@
 - 단계 `stage = p ≥ 1 ? 3 : floor(3p)`
 - 남은 초(안내용): `need = (1 − p) × Grow`, `b = max(0, WateredAt + Grow/2 − now)`; `need ≤ 1.5b` 이면 `need / 1.5`, 아니면 `b + (need − 1.5b)`
 - 다시 열림: 수확 시 `PlantedAt = now − (Grow − Regrow)` → 딸기(3600/1800)는 p = 0.5에서 다시 시작
+- 섬 연합 보너스(island-union.md): 위 `p`에 `rate = 1 + UnionBonus`(0–0.15)를 곱한다 `p = min(1, (now − PlantedAt + boost) × rate / Grow)`, 남은 초의 `need`도 `(1 − p) × Grow / rate`
 
 | 작물 | Grow | Regrow | 씨앗 | 판매 | 시간당 수익(물 없음) |
 |------|------|--------|------|------|------|
@@ -52,7 +55,8 @@
 - NPC Dialogue & Shops: 씨앗 판매·수확물 매입 (양방향: 상점이 `Crops`를 읽는다)
 - Collection Dex: 수확 때 작물 기록 (Dex가 Farming을 듣는다)
 - Party & Visiting: 파티원은 남의 밭에 물을 줄 수 있고, 주인이 "파티원 수확"을 켜면 거둘 수 있다. 작물은 주인 것(`party-visiting.md`)
-- Action Animation, Interaction Feedback: `Feedback` 신호 Till/Plant/Water/Harvest를 받는다
+- Action Animation, Interaction Feedback: `Feedback` 신호 Till/Plant/Water/Harvest를 받는다(도우미 동물이 하면 `Player`가 없어 주인 캐릭터는 움직이지 않는다)
+- Pets: 도우미 동물이 `FindJob`·`Help`를 부른다(pets.md)
 
 ## Acceptance Criteria
 

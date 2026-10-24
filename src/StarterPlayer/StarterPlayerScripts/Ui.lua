@@ -1,8 +1,10 @@
 -- 클라이언트 UI 공용: 팔레트·글꼴과 작은 생성 도우미(HUD·도감·꾸미기·대화 창이 같이 쓴다).
 -- 스타일: design/ux/ui-research.md §4 — Cream 알약 + Cocoa 테두리, 숫자는 FredokaOne, 한글은 Builder Sans Bold, 글자 14px 이상.
 -- 버튼은 누르면 0.9배로 눌렸다가 1.06배로 튀어 돌아온다(interaction-patterns.md "UI 버튼 누르기").
+local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
+local player = Players.LocalPlayer
 local rgb = Color3.fromRGB
 local Ui = {
 	CREAM = rgb(255, 248, 235),
@@ -128,23 +130,99 @@ function Ui.panel(parent, props)
 	return frame
 end
 
--- 열기(0.9 → 1.03 → 1, 220ms Back Out) / 닫기(150ms Quad In)
-function Ui.open(frame)
-	local scale = Ui.scale(frame)
-	scale.Scale = 0.9
-	frame.Visible = true
-	TweenService:Create(scale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+-- 열기 180ms(페이드 인 + 0.96 → 1, Quint Out) / 닫기 100ms(페이드 아웃 + 1 → 0.97, Quad Out). flat = 크기는 그대로(어두운 막).
+-- 페이드는 자손의 투명도 속성을 기억해 두고 섞는다(CanvasGroup은 바깥 UIStroke 테두리를 잘라서 쓰지 않는다).
+-- 움직임 줄이기를 켜면 크기는 바꾸지 않고 페이드만 한다. 열고 닫는 도중에 반대로 부르면 그 자리에서 되돌아간다.
+local FADE = {
+	{ "GuiObject", "BackgroundTransparency" }, { "TextLabel", "TextTransparency" }, { "TextLabel", "TextStrokeTransparency" },
+	{ "TextButton", "TextTransparency" }, { "TextButton", "TextStrokeTransparency" }, { "TextBox", "TextTransparency" },
+	{ "ImageLabel", "ImageTransparency" }, { "ImageButton", "ImageTransparency" }, { "ViewportFrame", "ImageTransparency" },
+	{ "UIStroke", "Transparency" },
+}
+local motion = setmetatable({}, { __mode = "k" }) -- [frame] = { Value(0 보임 ~ 1 안 보임), Base, Tweens, Closing }
+
+local function snapshot(frame)
+	local base = {}
+	local function add(object)
+		for _, entry in FADE do
+			if object:IsA(entry[1]) then
+				table.insert(base, { object, entry[2], object[entry[2]] })
+			end
+		end
+	end
+	add(frame)
+	for _, object in frame:GetDescendants() do
+		add(object)
+	end
+	return base
 end
-function Ui.close(frame)
-	local scale = Ui.scale(frame)
-	local tween = TweenService:Create(scale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Scale = 0.85 })
-	tween.Completed:Once(function()
-		if scale.Scale <= 0.86 then
+
+local function animate(frame, show, flat)
+	local state = motion[frame]
+	if not state then
+		state = { Value = Instance.new("NumberValue") }
+		state.Value.Changed:Connect(function(t)
+			for _, e in state.Base or {} do
+				e[1][e[2]] = e[3] + (1 - e[3]) * t
+			end
+		end)
+		motion[frame] = state
+	end
+	if state.Tweens and state.Closing == not show then
+		return -- 이미 그쪽으로 가는 중
+	elseif state.Tweens then -- 반대로 가는 도중: 기억한 원래 값에서 이어 간다
+		for _, tween in state.Tweens do
+			tween:Cancel()
+		end
+	elseif show and frame.Visible then
+		return -- 이미 열려 있다
+	elseif not show and not frame.Visible then
+		return
+	else
+		state.Base = snapshot(frame)
+		state.Value.Value = if show then 1 else 0
+	end
+	state.Closing = not show
+	local still = flat or player:GetAttribute("Setting_ReduceMotion") == true
+	local scale = not flat and Ui.scale(frame)
+	if show and scale and not state.Tweens then
+		scale.Scale = if still then 1 else 0.96
+	end
+	frame.Visible = true
+	local info = if show then TweenInfo.new(0.18, Enum.EasingStyle.Quint) else TweenInfo.new(0.1, Enum.EasingStyle.Quad)
+	local tweens = { TweenService:Create(state.Value, info, { Value = if show then 0 else 1 }) }
+	if scale then
+		table.insert(tweens, TweenService:Create(scale, info, { Scale = if show or still then 1 else 0.97 }))
+	end
+	state.Tweens = tweens
+	tweens[1].Completed:Once(function(status)
+		if status ~= Enum.PlaybackState.Completed then
+			return
+		end
+		state.Tweens = nil
+		if not show then
 			frame.Visible = false
-			scale.Scale = 1
+			state.Value.Value = 0 -- 원래 값으로 돌려놓고 숨긴다(다음에 열 때 기억할 값)
+			if scale then
+				scale.Scale = 1
+			end
 		end
 	end)
-	tween:Play()
+	for _, tween in tweens do
+		tween:Play()
+	end
+end
+
+function Ui.open(frame, flat)
+	animate(frame, true, flat)
+end
+function Ui.close(frame, flat)
+	animate(frame, false, flat)
+end
+-- 열려 있거나 열리는 중(닫히는 중이면 false)
+function Ui.IsOpen(frame)
+	local state = motion[frame]
+	return frame.Visible and not (state and state.Closing and state.Tweens)
 end
 
 return Ui

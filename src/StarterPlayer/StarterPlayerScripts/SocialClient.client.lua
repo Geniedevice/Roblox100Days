@@ -1,6 +1,7 @@
 -- 친구 창: HUD 오른쪽 기둥 "친구" → 서버의 다른 플레이어 줄(얼굴·이름·섬 컨셉·청크·파티 표시, "놀러 가기"·"초대")과
 -- 아래쪽 내 파티(인원/6, 나가기)·"우리 섬으로". 초대 카드(수락·거절, 시간 막대)와 남의 섬에 있을 때 위쪽 "○○의 섬 · 집으로" 알약.
--- 판정은 전부 서버(PartyService). 명세: design/gdd/party-visiting.md
+-- 섬 연합: 파티원 줄 "섬 잇기"(같은 연합이면 "연합" 표시), 같은 초대 카드로 섬 잇기 요청, 아래쪽 "연합 끊기".
+-- 판정은 전부 서버(PartyService·UnionService). 명세: design/gdd/party-visiting.md, island-union.md
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -15,13 +16,18 @@ local Ui = require(script.Parent:WaitForChild("Ui"))
 local player = Players.LocalPlayer
 local touch = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 local MAX = 6 -- PartyService.MAX와 같게
-local WATCHED = { "PartyId", "PartyLeader", "IslandConcept", "IslandChunks", "Visiting" }
+local WATCHED = { "PartyId", "PartyLeader", "IslandConcept", "IslandChunks", "Visiting", "UnionId" }
 
 local gui = Ui.make("ScreenGui", nil, { Name = "Social", ResetOnSpawn = false, DisplayOrder = 6 })
 
 local function sameParty(other)
 	local id = player:GetAttribute("PartyId")
 	return id ~= nil and other:GetAttribute("PartyId") == id
+end
+
+local function sameUnion(other)
+	local id = player:GetAttribute("UnionId")
+	return id ~= nil and other:GetAttribute("UnionId") == id
 end
 
 local function islandLine(other)
@@ -64,10 +70,13 @@ local footer = Ui.make("Frame", panel, { AnchorPoint = Vector2.new(0, 1), Positi
 Ui.corner(footer, 14)
 Ui.stroke(footer, 2.5)
 local partyText = Ui.text(footer, "", 16, { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -250, 1, 0), TextXAlignment = Enum.TextXAlignment.Left })
-local leaveButton = Ui.button(footer, "파티 나가기", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(112, 42),
-	TextSize = 15 })
-local homeButton = Ui.button(footer, "우리 섬으로", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -128, 0.5, 0), Size = UDim2.fromOffset(112, 42),
-	TextSize = 15 }, true)
+local footerButtons = Ui.make("Frame", footer, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.new(1, -16, 0, 42),
+	BackgroundTransparency = 1 })
+Ui.make("UIListLayout", footerButtons, { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Right,
+	Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+local homeButton = Ui.button(footerButtons, "우리 섬으로", { LayoutOrder = 1, Size = UDim2.fromOffset(104, 42), TextSize = 15 }, true)
+local unionButton = Ui.button(footerButtons, "연합 끊기", { LayoutOrder = 2, Size = UDim2.fromOffset(96, 42), TextSize = 15 })
+local leaveButton = Ui.button(footerButtons, "파티 나가기", { LayoutOrder = 3, Size = UDim2.fromOffset(104, 42), TextSize = 15 })
 
 local function clearList()
 	for _, child in list:GetChildren() do
@@ -96,10 +105,17 @@ local function row(order, other)
 		Remotes.Interact:FireServer("Visit", other)
 		Juice.Sound("button.wav", 1.2, 0.3)
 	end)
-	if sameParty(other) then
+	if sameUnion(other) then
 		local chip = Ui.pill(frame, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -124, 0.5, 0), Size = UDim2.fromOffset(84, 34),
-			BackgroundColor3 = Ui.MINT })
-		Ui.text(chip, "파티", 15)
+			BackgroundColor3 = Ui.SKY })
+		Ui.text(chip, "연합", 15)
+	elseif sameParty(other) then
+		local unite = Ui.button(frame, "섬 잇기", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -124, 0.5, 0), Size = UDim2.fromOffset(84, 46),
+			TextSize = 15, BackgroundColor3 = Ui.MINT })
+		unite.Activated:Connect(function()
+			Remotes.Interact:FireServer("Unite", other)
+			Juice.Sound("button.wav", 1.4, 0.3)
+		end)
 	else
 		local invite = Ui.button(frame, "초대", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -124, 0.5, 0), Size = UDim2.fromOffset(84, 46),
 			TextSize = 15 })
@@ -139,18 +155,28 @@ local function render()
 			members += 1
 		end
 	end
-	partyText.Text = if members > 0 then string.format("파티 %d / %d명", members, MAX) else "파티 없음 · 친구를 초대해 보세요"
+	local islands = 0
+	for _, other in Players:GetPlayers() do
+		if sameUnion(other) then
+			islands += 1
+		end
+	end
+	partyText.Text = (if members > 0 then string.format("파티 %d / %d명", members, MAX) else "파티 없음 · 친구를 초대해 보세요")
+		.. (if islands > 0 then string.format("\n연합 %d섬", islands) else "")
 	leaveButton.Visible = members > 0
 	homeButton.Visible = player:GetAttribute("Visiting") ~= nil
+	unionButton.Visible = islands > 0
+	local shown = (if homeButton.Visible then 112 else 0) + (if unionButton.Visible then 104 else 0) + (if leaveButton.Visible then 112 else 0)
+	partyText.Size = UDim2.new(1, -(shown + 24), 1, 0)
 end
 
 local function setOpen(open)
 	if open then
-		dim.Visible = true
+		Ui.open(dim, true)
 		Ui.open(panel)
 		render()
 	else
-		dim.Visible = false
+		Ui.close(dim, true)
 		Ui.close(panel)
 	end
 	Juice.SetPanel("Friends", open)
@@ -161,6 +187,9 @@ closeButton.Activated:Connect(function()
 end)
 leaveButton.Activated:Connect(function()
 	Remotes.Interact:FireServer("LeaveParty")
+end)
+unionButton.Activated:Connect(function()
+	Remotes.Interact:FireServer("LeaveUnion")
 end)
 homeButton.Activated:Connect(function()
 	Remotes.Interact:FireServer("Home")
@@ -202,7 +231,7 @@ task.spawn(function()
 	icon.Parent = button
 	Ui.text(button, "친구", 14, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -2), Size = UDim2.new(1, 0, 0, 18) })
 	button.Activated:Connect(function()
-		setOpen(not panel.Visible)
+		setOpen(not Ui.IsOpen(panel))
 	end)
 end)
 
@@ -219,7 +248,7 @@ local decline = Ui.button(card, "거절", { AnchorPoint = Vector2.new(1, 1), Pos
 local timerBack = Ui.make("Frame", card, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -6), Size = UDim2.new(1, -32, 0, 4),
 	BackgroundColor3 = Ui.PARCHMENT_DEEP, BorderSizePixel = 0, ZIndex = 21 })
 local timerBar = Ui.make("Frame", timerBack, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Ui.LEAF, BorderSizePixel = 0, ZIndex = 22 })
-local inviter, cardToken = nil, 0
+local inviter, inviteKind, cardToken = nil, nil, 0
 
 local function hideCard()
 	cardToken += 1
@@ -229,7 +258,7 @@ end
 
 local function answer(yes)
 	if inviter then
-		Remotes.Interact:FireServer("Answer", inviter, yes)
+		Remotes.Interact:FireServer(if inviteKind == "Unite" then "UniteAnswer" else "Answer", inviter, yes)
 	end
 	hideCard()
 end
@@ -241,17 +270,18 @@ decline.Activated:Connect(function()
 end)
 
 Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
-	if kind ~= "Invite" or not info or not info.From then
+	if (kind ~= "Invite" and kind ~= "Unite") or not info or not info.From then
 		return
 	end
 	cardToken += 1
 	local mine = cardToken
-	inviter = info.From
+	inviter, inviteKind = info.From, kind
 	for _, child in cardFace:GetChildren() do
 		child:Destroy()
 	end
 	headshot(cardFace, inviter.UserId, 52)
-	cardText.Text = inviter.DisplayName .. "님이 파티에 초대했어요!\n같이 섬을 가꿔요"
+	cardText.Text = if kind == "Unite" then inviter.DisplayName .. "님이 섬을 잇자고 해요!\n내 섬이 옆으로 날아가 다리가 놓여요"
+		else inviter.DisplayName .. "님이 파티에 초대했어요!\n같이 섬을 가꿔요"
 	Ui.open(card)
 	Juice.Punch(card, 1.08, 0.2)
 	Juice.Sound("electronicpingshort.wav", 1.2, 0.4)

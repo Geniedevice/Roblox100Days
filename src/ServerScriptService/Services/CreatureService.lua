@@ -27,17 +27,6 @@ local CreatureService = {}
 local herds = {} -- [player] = { Island, Folder, List = { { Model, Root, Id, Home, NextAt, Busy, PetAt } } }
 local rng = Random.new()
 
-local function groundAt(island, position)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	params.FilterDescendantsInstances = { island.Blocks, island.Plants, island.Water }
-	local hit = workspace:Raycast(position + Vector3.new(0, 60, 0), Vector3.new(0, -160, 0), params)
-	if hit and hit.Instance.Parent == island.Blocks and hit.Normal.Y > 0.75 then
-		return hit.Position
-	end
-	return nil
-end
-
 -- 서식지 구역의 청크에서 땅 자리(물가 생물은 물 가까이)
 local function findHome(island, def)
 	local zones = HABITAT_ZONES[def.Habitat]
@@ -58,7 +47,7 @@ local function findHome(island, def)
 	for _ = 1, 20 do
 		local c = chunks[rng:NextInteger(1, #chunks)]
 		local point = island.Origin + Vector3.new((c.X + rng:NextNumber(0.1, 0.9)) * size, island.YardY, (c.Z + rng:NextNumber(0.1, 0.9)) * size)
-		local ground = groundAt(island, point)
+		local ground = IslandService.Ground(island, point)
 		if ground then
 			return ground
 		end
@@ -73,17 +62,10 @@ local function place(entry, ground, look)
 	return CFrame.lookAt(position, Vector3.new(look.X, position.Y, look.Z))
 end
 
--- 한 번 움직이기(끝날 때까지 기다린다)
-local function move(entry, island)
-	local def = Creatures[entry.Id]
-	local root = entry.Root
-	local angle = rng:NextNumber(0, 2 * math.pi)
-	local target = groundAt(island, entry.Home + Vector3.new(math.cos(angle), 0, math.sin(angle)) * rng:NextNumber(4, ROAM))
-	if not target or not root.Parent then
-		return
-	end
+-- 앵커한 root를 goal까지 옮긴다(끝날 때까지 기다린다). Hop은 3스터드마다 한 번 뛰고, 나머지는 돌아선 뒤 speed(기본 def.Speed)로 간다.
+-- 도우미 동물(PetService)도 쓴다
+function CreatureService.Travel(root, def, goal, speed)
 	local from = root.Position
-	local goal = place(entry, target, target + (target - from) * Vector3.new(1, 0, 1) + Vector3.new(0.01, 0, 0))
 	local distance = (goal.Position - from).Magnitude
 	if def.Move == "Hop" then
 		local hops = math.max(1, math.ceil(distance / 3))
@@ -103,10 +85,23 @@ local function move(entry, island)
 		local turn = TweenService:Create(root, TweenInfo.new(0.3), { CFrame = CFrame.lookAt(from, from + goal.LookVector) })
 		turn:Play()
 		turn.Completed:Wait()
-		local walk = TweenService:Create(root, TweenInfo.new(distance / def.Speed, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { CFrame = goal })
+		local walk = TweenService:Create(root, TweenInfo.new(distance / (speed or def.Speed), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+			{ CFrame = goal })
 		walk:Play()
 		walk.Completed:Wait()
 	end
+end
+
+-- 한 번 움직이기(끝날 때까지 기다린다)
+local function move(entry, island)
+	local root = entry.Root
+	local angle = rng:NextNumber(0, 2 * math.pi)
+	local target = IslandService.Ground(island, entry.Home + Vector3.new(math.cos(angle), 0, math.sin(angle)) * rng:NextNumber(4, ROAM))
+	if not target or not root.Parent then
+		return
+	end
+	CreatureService.Travel(root, Creatures[entry.Id], place(entry, target, target + (target - root.Position) * Vector3.new(1, 0, 1)
+		+ Vector3.new(0.01, 0, 0)))
 end
 
 function CreatureService.Load(player, island)

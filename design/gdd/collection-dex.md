@@ -38,6 +38,7 @@
 - Inventory & Economy: 보상 코인
 - Interaction Feedback: DexNew 배너·효과음
 - Party & Visiting: 친구 섬에 처음 가면 그 섬 컨셉을 "섬"에 기록한다. 친구 섬 물고기·생물도 기록된다
+- Island Union: 섬이 연합 자리에 붙으면 서로의 섬 컨셉을 "섬"에 기록한다
 
 ## Acceptance Criteria
 

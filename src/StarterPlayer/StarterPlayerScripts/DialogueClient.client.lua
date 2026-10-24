@@ -42,7 +42,7 @@ end
 local gui = make("ScreenGui", nil, { Name = "Dialogue", ResetOnSpawn = false, DisplayOrder = 5 })
 
 
--- 대화창: Cream 패널 + Cocoa 테두리, 이름표는 Leaf Deep. 열릴 때 아래에서 0.9 → 1.03 → 1로 튀어 오른다
+-- 대화창: Cream 패널 + Cocoa 테두리, 이름표는 Leaf Deep. 열릴 때 아래에서 24px 떠오르며 나타난다(Ui.open)
 local panel = make("Frame", gui, {
 	Name = "Panel", AnchorPoint = Vector2.new(0.5, 1), Position = PANEL_POSITION,
 	Size = UDim2.new(0.92, 0, 0, 136), BackgroundColor3 = CREAM, Visible = false,
@@ -164,6 +164,9 @@ local function openShop(message)
 			Juice.Sound("switch.wav", 1.2, 0.3)
 			Juice.Sound("electronicpingshort.wav", 1.3, 0.25)
 			Juice.Combo()
+			if item.Id:find("^Pet_") then
+				return -- 도우미 동물은 날아가지 않고 섬에 나타난다(PetService)
+			end
 			local target = Juice.Targets.Item and Juice.Targets.Item(item.Id) or Juice.Targets.Decor
 			local center = icon.AbsolutePosition + icon.AbsoluteSize / 2 + Vector2.new(0, 36)
 			local ray = workspace.CurrentCamera:ViewportPointToRay(center.X, center.Y)
@@ -217,9 +220,9 @@ local function showLine(message)
 	speaker.Text = message.Speaker
 	body.Text = message.Text
 	typeOut(message.Text, VOICE[message.Speaker] or 1.5)
-	if not panel.Visible then -- 아래에서 튀어 오른다
-		panel.Position = PANEL_POSITION + UDim2.fromOffset(0, 40)
-		TweenService:Create(panel, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = PANEL_POSITION }):Play()
+	if not Ui.IsOpen(panel) then -- 아래에서 떠오른다(닫히는 중이면 되돌린다)
+		panel.Position = PANEL_POSITION + UDim2.fromOffset(0, 24)
+		TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Position = PANEL_POSITION }):Play()
 		Ui.open(panel)
 	elseif message.Text:find("!") and not Juice.Reduced() then -- 느낌표 대사에서 창이 움찔
 		panel.Position = PANEL_POSITION + UDim2.fromOffset(0, -6)
@@ -243,12 +246,11 @@ local function showLine(message)
 		end)
 	end
 	talkingTo = message.Npc
-	panel.Visible = true
 	Juice.SetPanel("Dialogue", true)
 end
 
 local function hidePanel()
-	panel.Visible = false
+	Ui.close(panel)
 	talkingTo = nil
 	Juice.SetPanel("Dialogue", false)
 end
@@ -264,6 +266,7 @@ Remotes.Dialogue.OnClientEvent:Connect(function(message)
 end)
 
 closeButton.Activated:Connect(function()
+	hidePanel() -- 서버 답을 기다리지 않고 바로 닫는다
 	Remotes.Dialogue:FireServer(0)
 end)
 shopClose.Activated:Connect(closeShop)
@@ -274,11 +277,11 @@ local function far(model)
 	return not root or not model or not model.Parent or (root.Position - model:GetPivot().Position).Magnitude > CLOSE_RANGE
 end
 RunService.Heartbeat:Connect(function()
-	if panel.Visible and far(talkingTo) then
+	if Ui.IsOpen(panel) and far(talkingTo) then
 		Remotes.Dialogue:FireServer(0)
 		hidePanel()
 	end
-	if shop.Visible and far(shopNpc) then
+	if Ui.IsOpen(shop) and far(shopNpc) then
 		closeShop()
 	end
 end)

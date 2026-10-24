@@ -111,14 +111,15 @@ local function onClean(player, model)
 	DecorService.UpdateCozy(player)
 end
 
-function ChoreService.Load(player, island)
+-- moved = 섬만 옮겨 다시 지었다(연합): 남은 개수만 새 자리에, 오프라인 몫은 더하지 않는다
+function ChoreService.Load(player, island, moved)
 	local profile = DataService.Get(player)
 	local folder = Instance.new("Folder")
 	folder.Name = "Chores"
 	folder.Parent = island.Model
 	chores[player] = { Island = island, Folder = folder, Rng = Random.new(), NextAt = os.clock() + ONLINE_EVERY, Models = {} }
 
-	local added = if profile.LastSeen == 0 then FIRST_ISLAND
+	local added = if moved then 0 elseif profile.LastSeen == 0 then FIRST_ISLAND
 		else math.min(OFFLINE_MAX, math.floor((os.time() - profile.LastSeen) / OFFLINE_EVERY))
 	local count = math.min(MAX, profile.Chores + added)
 	local spawned = 0

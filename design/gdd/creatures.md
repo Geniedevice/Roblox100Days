@@ -41,7 +41,7 @@
 ## Dependencies
 
 - 기대는 것: Island Zones(서식 구역), Loot(시드 표), Collection Dex
-- 이것에 기대는 것: Interaction Feedback(Pet), Action Animation(쓰다듬기 동작)
+- 이것에 기대는 것: Interaction Feedback(Pet), Action Animation(쓰다듬기 동작), Pets(생물 모형과 `CreatureService.Travel` 이동을 도우미 동물이 쓴다, pets.md)
 
 ## Tuning Knobs
 

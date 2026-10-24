@@ -125,7 +125,7 @@
 
 ## Animation Standards (이 프로젝트 값)
 
-누르기 60ms Quad Out · 놓기 90 Back Out + 70 Sine · 등장 160~220 Back Out · 퇴장 120~160 Quad In · 패널 열기 220 Back Out / 닫기 150 Quad In · 토스트 180 / 160 · 탭 전환 150 · 값 펀치 180 Back Out · 날아가기 400~650 Quad In · 숫자 굴리기 250~1200 Quad Out · 대기 루프 주기 2초 이상 Sine InOut.
+누르기 60ms Quad Out · 놓기 90 Back Out + 70 Sine · 등장 160~220 Back Out · 퇴장 120~160 Quad In · 패널 열기 180 Quint Out(페이드 인 + 0.96 → 1) / 닫기 100 Quad Out(페이드 아웃 + → 0.97), 움직임 줄이기면 페이드만. 닫기는 서버 답을 기다리지 않는다(2026-10-24) · 토스트 180 / 160 · 탭 전환 150 · 값 펀치 180 Back Out · 날아가기 400~650 Quad In · 숫자 굴리기 250~1200 Quad Out · 대기 루프 주기 2초 이상 Sine InOut.
 
 ## Accessibility — Reduce Motion (움직임 줄이기)
 

@@ -21,7 +21,8 @@ local IslandService = {}
 IslandService.Rebuilt = Instance.new("BindableEvent") -- (player, record) 지형을 새로 지은 뒤
 local islands = {} -- [player] = 섬 정보(Spawn이 돌려주는 record)
 local here = {} -- [player] = 지금 있는 섬 record(내 섬 또는 놀러 간 섬)
-local slots = {} -- [slot] = player
+local slots = {} -- [slot] = 그 슬롯에 지은 섬 수(연합이면 여러 개)
+local hooked = setmetatable({}, { __mode = "k" }) -- CharacterAdded를 연결한 플레이어
 local folder
 
 function IslandService.ChunkPrice(profile)
@@ -87,16 +88,20 @@ local function build(record, profile)
 end
 
 -- profile.Seed가 없으면(새 플레이어) 새 시드를 준다. DataService가 profile을 저장하니 다음 접속에도 같은 섬이다.
+-- place = { Origin, Slot }이면 그 자리에 짓는다(연합 이웃 자리, UnionService). 없으면 빈 슬롯의 원점.
 -- 섬 정보를 돌려준다. 캐릭터는 다른 서비스가 섬을 채운 뒤 Main이 낸다.
-function IslandService.Spawn(player, profile)
+function IslandService.Spawn(player, profile, place)
 	profile.Seed = profile.Seed or Random.new():NextInteger(1, 2147483646)
 
-	local slot = 1
-	while slots[slot] do
-		slot += 1
+	local slot = place and place.Slot
+	if not slot then
+		slot = 1
+		while slots[slot] do
+			slot += 1
+		end
 	end
-	slots[slot] = player
-	local origin = Vector3.new(slot * SLOT_SPACING, 0, 0)
+	slots[slot] = (slots[slot] or 0) + 1 -- 연합은 슬롯 하나에 섬 여러 개
+	local origin = if place then place.Origin else Vector3.new(slot * SLOT_SPACING, 0, 0)
 
 	local model = Instance.new("Model")
 	model.Name = "Island_" .. player.UserId
@@ -117,21 +122,45 @@ function IslandService.Spawn(player, profile)
 	player:SetAttribute("IslandConcept", record.Concept)
 	player:SetAttribute("IslandChunks", #record.Gen.Chunks)
 
-	player.CharacterAdded:Connect(function(character)
-		local home = islands[player]
-		if home then
-			here[player] = home
-			player:SetAttribute("Visiting", nil)
-			task.defer(character.PivotTo, character, home.Spawn) -- 기본 스폰 배치가 끝난 뒤에 옮긴다
-		end
-		character:WaitForChild("Humanoid").Died:Connect(function()
-			task.wait(RESPAWN_DELAY)
-			if islands[player] then
-				player:LoadCharacter()
+	if not hooked[player] then -- 섬을 옮겨 다시 지어도 한 번만
+		hooked[player] = true
+		player.CharacterAdded:Connect(function(character)
+			local home = islands[player]
+			if home then
+				here[player] = home
+				player:SetAttribute("Visiting", nil)
+				task.defer(character.PivotTo, character, home.Spawn) -- 기본 스폰 배치가 끝난 뒤에 옮긴다
 			end
+			character:WaitForChild("Humanoid").Died:Connect(function()
+				task.wait(RESPAWN_DELAY)
+				if islands[player] then
+					player:LoadCharacter()
+				end
+			end)
 		end)
-	end)
+	end
 	return record
+end
+
+-- 본섬(청크) 가장자리까지 거리(스터드), axis = ±X 또는 ±Z 단위 벡터. 연합 구름다리가 쓴다
+function IslandService.Extent(record, axis)
+	local far = -math.huge
+	for _, c in record.Gen.Chunks do
+		local low, high = Vector3.new(c.X, 0, c.Z) * CHUNK_STUDS, Vector3.new(c.X + 1, 0, c.Z + 1) * CHUNK_STUDS
+		far = math.max(far, low:Dot(axis), high:Dot(axis))
+	end
+	return far
+end
+
+-- position의 (x, z) 위 땅 윗면 위치. 땅 블록이 아니면(물·나무·허공) nil. 생물·도우미 동물·연합 다리가 쓴다
+-- fromY = 이 높이부터 아래로 찾는다(기본은 섬 위 하늘: 지붕 위가 잡힐 수 있다. 사람 곁이면 그 사람 높이를 준다)
+function IslandService.Ground(record, position, fromY)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { record.Blocks, record.Plants, record.Water }
+	local top = fromY or record.Origin.Y + 200
+	local hit = workspace:Raycast(Vector3.new(position.X, top, position.Z), Vector3.new(0, record.Origin.Y - 200 - top, 0), params) -- 섬 아래 200까지
+	return if hit and hit.Instance.Parent == record.Blocks and hit.Normal.Y > 0.75 then hit.Position else nil
 end
 
 -- 땅을 산 뒤: 지형만 새로 짓고 Rebuilt를 알린다(밭 자리·광석이 바뀐다)
@@ -191,7 +220,7 @@ function IslandService.Remove(player)
 		return
 	end
 	islands[player] = nil
-	slots[island.Slot] = nil
+	slots[island.Slot] = if slots[island.Slot] > 1 then slots[island.Slot] - 1 else nil
 	for visitor, record in here do
 		if record == island and islands[visitor] then
 			IslandService.MoveTo(visitor, islands[visitor])

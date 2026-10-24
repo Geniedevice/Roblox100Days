@@ -45,9 +45,10 @@ The game needs few systems but every one sits on the same spine: a seed-built is
 | 11 | Island Zones & Expansion (was Island Progression) | Progression | MVP | Implemented | design/gdd/island-zones.md | Island Generation, Inventory & Economy, NPC Dialogue & Shops, Data Persistence |
 | 12 | Party & Visiting | Gameplay | Alpha | Implemented (same server) | design/gdd/party-visiting.md | Island Generation, Data Persistence, Farming, Fishing, Collection Dex |
 | 13 | Fishing | Gameplay | MVP | Implemented | design/gdd/fishing.md | Island Zones & Expansion, Inventory & Economy, Collection Dex |
-| 14 | Island Union | Gameplay | Full Vision | Not Started | — | Party & Visiting, Island Generation, Data Persistence |
+| 14 | Island Union | Gameplay | Full Vision | Implemented (same server) | design/gdd/island-union.md | Party & Visiting, Island Generation, Data Persistence, Farming, Collection Dex |
 | 15 | Mining | Gameplay | MVP | Implemented | design/gdd/mining.md | Island Zones & Expansion, Inventory & Economy, Collection Dex |
 | 16 | Creatures | Gameplay | Vertical Slice | Implemented | design/gdd/creatures.md | Island Generation, Island Zones & Expansion, Collection Dex |
+| 17 | Pets (도우미 동물) | Gameplay | Vertical Slice | Implemented | design/gdd/pets.md | Farming, Creatures, NPC Dialogue & Shops, Inventory & Economy |
 
 ---
 
@@ -87,7 +88,7 @@ The game needs few systems but every one sits on the same spine: a seed-built is
 
 ### Polish Layer
 1. Party & Visiting — depends on: Island Generation, Data Persistence (settings), Farming, Fishing, Collection Dex
-2. Island Union — depends on: Party & Visiting
+2. Island Union — depends on: Party & Visiting, Island Generation (slots, edges), Data Persistence (`Union`), Farming (growth bonus)
 
 Bottlenecks: Data Persistence and Island Generation (everything depends on them). Leaf systems: Action Animation, Interaction Feedback, Island Union. No cycles: Collection Dex reads events from Farming and Housekeeping but neither reads the dex.
 

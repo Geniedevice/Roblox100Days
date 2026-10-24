@@ -14,6 +14,7 @@ Lines.ko = {
 	MOMO_HOWTO = "작물은 네가 섬을 비운 동안에도 자라. 물을 주면 한동안 1.5배 빨리 크고.",
 	MOMO_HOWTO2 = "다 자란 작물은 반짝반짝 빛나. 눌러서 거두고 나한테 가져오면 사 줄게.",
 	OPT_BUY_SEEDS = "씨앗 사기",
+	OPT_PETS = "도우미 동물 보기",
 	OPT_SELL = "작물 팔기",
 	OPT_HOWTO = "농사 요령",
 

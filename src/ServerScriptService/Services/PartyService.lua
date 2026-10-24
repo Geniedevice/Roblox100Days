@@ -42,8 +42,10 @@ local function drop(player)
 	player:SetAttribute("PartyLeader", nil)
 end
 
+-- 같은 파티이거나 같은 섬 연합(UnionService가 UnionId 속성을 단다)
 function PartyService.Same(a, b)
-	return a == b or (partyOf[a] ~= nil and partyOf[a] == partyOf[b])
+	local union = a:GetAttribute("UnionId")
+	return a == b or (partyOf[a] ~= nil and partyOf[a] == partyOf[b]) or (union ~= nil and union == b:GetAttribute("UnionId"))
 end
 
 -- 남의 밭 수확: 같은 파티이고 주인이 "파티원 수확"을 켰을 때

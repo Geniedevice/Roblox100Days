@@ -123,7 +123,7 @@ local function rotate()
 end
 
 Juice.Bus.ToggleDecor.Event:Connect(function()
-	setMode(not panel.Visible)
+	setMode(not Ui.IsOpen(panel))
 end)
 doneButton.Activated:Connect(function()
 	setMode(false)

@@ -34,6 +34,7 @@
 
 - Inventory & Economy (코인·아이템), Data Persistence (`profile.Npc[Id]`), Island Generation (NPC 자리 = 마당 칸)
 - Farming: 씨앗 상점이 `Crops`를 읽는다 / Housekeeping: 목수 상점이 `Furniture`를 읽는다
+- Pets: 모모 "도우미 동물 보기" → 상점 "Pets"(모모 노점에서 판다, 하나씩만 `Once`), `Shared/Pets.lua`를 읽는다(pets.md)
 - Action Animation: 대화 시작 때 NPC가 플레이어를 보고 손을 흔든다 / Interaction Feedback: Sell, Gift 신호
 - Party & Visiting: 친구 섬 루미는 밭 열기·섬 넓히기를 보이지 않고(`v.Home`), "이 섬의 명물"은 그 섬 것을 말한다
 

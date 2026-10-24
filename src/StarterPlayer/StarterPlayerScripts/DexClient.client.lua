@@ -116,18 +116,18 @@ end
 
 local function setOpen(open)
 	if open then
-		dim.Visible = true
+		Ui.open(dim, true)
 		Ui.open(panel)
 		refresh()
 	else
-		dim.Visible = false
+		Ui.close(dim, true)
 		Ui.close(panel)
 	end
 	Juice.SetPanel("Dex", open)
 end
 
 Juice.Bus.ToggleDex.Event:Connect(function()
-	setOpen(not panel.Visible)
+	setOpen(not Ui.IsOpen(panel))
 end)
 closeButton.Activated:Connect(function()
 	setOpen(false)

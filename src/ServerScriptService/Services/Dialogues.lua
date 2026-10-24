@@ -60,6 +60,7 @@ return {
 				Line = "MOMO_HELLO",
 				Choices = {
 					{ Text = "OPT_BUY_SEEDS", Action = "OpenShop", To = "bye" },
+					{ Text = "OPT_PETS", Action = "OpenPets", To = "bye" },
 					{ Text = "OPT_SELL", To = "sold", Action = "SellCrops", If = function(v)
 						return v.CropCount > 0
 					end },

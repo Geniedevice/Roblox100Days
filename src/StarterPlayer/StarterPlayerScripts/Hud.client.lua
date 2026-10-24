@@ -674,7 +674,7 @@ local function setSettings(open)
 	Juice.SetPanel("Settings", open)
 end
 gearButton.Activated:Connect(function()
-	setSettings(not settingsPanel.Visible)
+	setSettings(not Ui.IsOpen(settingsPanel))
 end)
 settingsClose.Activated:Connect(function()
 	setSettings(false)
@@ -724,16 +724,100 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 end)
 
 -- 농지 누르기: 서버에 "눌렀다"와 고른 씨앗만 보낸다(Tap Acknowledge로 지연을 가린다)
+local function useTile(tile)
+	Juice.Squash(tile, Vector3.new(1, 0.92, 1), 0.05, 0.09)
+	Juice.Sound("button.wav", 1.6, 0.12)
+	Remotes.Interact:FireServer("Tile", tile, selectedSeed)
+end
 WorldPointer.OnTap(function(result)
 	if player:GetAttribute("DecorMode") then
 		return
 	end
 	local target = result.Instance
 	if CollectionService:HasTag(target, "FarmTile") then -- 친구 밭도 보낸다(파티원 물주기, 안 되면 서버가 이유를 토스트)
-		Juice.Squash(target, Vector3.new(1, 0.92, 1), 0.05, 0.09)
-		Juice.Sound("button.wav", 1.6, 0.12)
-		Remotes.Interact:FireServer("Tile", target, selectedSeed)
+		useTile(target)
 	end
+end)
+
+-- 밭 안내: 캐릭터 앞 농지 하나에 지금 할 일을 띄운다(E · 게임패드 X · 모바일은 버튼). 내 밭은 밭 갈기 → 씨앗 뿌리기 → 물주기 →
+-- 수확하기, 물 준 뒤 자라는 중이면 살펴보기(남은 시간 토스트). 친구 밭은 파티·연합이면 물주기, 주인이 허락하면 수확하기만.
+-- 프롬프트는 클라이언트에만 있고(내 화면용), 누르면 농지를 누른 것과 같은 요청을 보낸다. 판정은 서버.
+local PROMPT_RANGE = 9 -- 캐릭터에서 농지까지(수평, 스터드)
+local promptAnchor = Ui.make("Part", workspace, { Name = "TilePromptAnchor", Anchored = true, CanCollide = false, CanQuery = false,
+	CanTouch = false, Transparency = 1, Size = Vector3.new(1, 1, 1) }) -- 농지가 다시 지어져도 프롬프트가 같이 지워지지 않게
+local tilePrompt = Ui.make("ProximityPrompt", promptAnchor, { HoldDuration = 0, MaxActivationDistance = PROMPT_RANGE + 4,
+	RequiresLineOfSight = false, Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton, Enabled = false })
+local promptTile
+tilePrompt.Triggered:Connect(function()
+	if promptTile and promptTile.Parent then
+		useTile(promptTile)
+	end
+end)
+
+local function sameGroup(owner) -- 파티원·연합 멤버(서버 PartyService.Same과 같은 판정)
+	for _, key in { "PartyId", "UnionId" } do
+		local id = player:GetAttribute(key)
+		if id ~= nil and owner:GetAttribute(key) == id then
+			return true
+		end
+	end
+	return false
+end
+
+-- 그 농지에서 지금 할 일 → 글, 작물·씨앗 글. 할 일이 없으면 nil
+local function tileAction(tile)
+	local owner = Players:GetPlayerByUserId(tile:GetAttribute("Owner") or 0)
+	local crop = Crops[tile:GetAttribute("Crop") or ""]
+	local ripe = tile:GetAttribute("Stage") == 3
+	if owner ~= player then
+		if not owner or not crop or not sameGroup(owner) then
+			return nil
+		elseif ripe then
+			return if owner:GetAttribute("Setting_HarvestParty") then "수확하기" else nil, crop.Name
+		end
+		return if tile:GetAttribute("Watered") then nil else "물주기", crop.Name
+	elseif not tile:GetAttribute("Tilled") then
+		return "밭 갈기", ""
+	elseif not crop then
+		local seed = selectedSeed and Crops[selectedSeed]
+		local count = seed and player:GetAttribute("Item_Seed_" .. selectedSeed) or 0
+		return "씨앗 뿌리기", if count > 0 then string.format("%s 씨앗 ×%d", seed.Name, count) else "씨앗 없음 · 모모에게서 사요"
+	elseif ripe then
+		return "수확하기", crop.Name
+	elseif not tile:GetAttribute("Watered") then
+		return "물주기", crop.Name
+	end
+	return "살펴보기", crop.Name .. " · 자라는 중"
+end
+
+local lastPromptCheck = 0
+RunService.Heartbeat:Connect(function()
+	if os.clock() - lastPromptCheck < 0.1 then
+		return
+	end
+	lastPromptCheck = os.clock()
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local best, bestScore, bestAction, bestObject
+	if root and Juice.State.Panels == 0 and not player:GetAttribute("DecorMode") then
+		local flat = Vector3.new(1, 0, 1)
+		local front = root.Position + root.CFrame.LookVector * 3 -- 바라보는 쪽 칸이 먼저
+		for _, tile in CollectionService:GetTagged("FarmTile") do
+			if ((tile.Position - root.Position) * flat).Magnitude <= PROMPT_RANGE then
+				local action, object = tileAction(tile)
+				-- 살펴보기는 다른 할 일이 없을 때만
+				local score = action and ((tile.Position - front) * flat).Magnitude + (if action == "살펴보기" then 100 else 0)
+				if score and (not bestScore or score < bestScore) then
+					best, bestScore, bestAction, bestObject = tile, score, action, object
+				end
+			end
+		end
+	end
+	promptTile = best
+	if best then
+		promptAnchor.CFrame = best.CFrame + Vector3.new(0, 1, 0)
+		tilePrompt.ActionText, tilePrompt.ObjectText = bestAction, bestObject
+	end
+	tilePrompt.Enabled = best ~= nil
 end)
 
 -- 구역이 바뀌면 칩과 핫바

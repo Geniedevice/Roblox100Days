@@ -11,6 +11,7 @@ local Crops = require(Shared:WaitForChild("Crops"))
 local Furniture = require(Shared:WaitForChild("Furniture"))
 local IslandConcepts = require(Shared:WaitForChild("IslandConcepts"))
 local Models = require(Shared:WaitForChild("Models"))
+local Pets = require(Shared:WaitForChild("Pets"))
 
 local M = Enum.Material
 local rgb = Color3.fromRGB
@@ -199,7 +200,7 @@ function Icons.View(kind, id, props)
 	return view
 end
 
--- 아이템 Id("Seed_Turnip", "Fish_Trout", "Ore_Iron", 작물 Id, 가구 Id) → 아이콘 종류, Id
+-- 아이템 Id("Seed_Turnip", "Fish_Trout", "Ore_Iron", "Pet_Frog", 작물 Id, 가구 Id) → 아이콘 종류, Id
 function Icons.ForItem(itemId)
 	local prefix, rest = itemId:match("^(%a+)_(.+)$")
 	if prefix == "Seed" then
@@ -208,6 +209,8 @@ function Icons.ForItem(itemId)
 		return "Fish", rest
 	elseif prefix == "Ore" then
 		return "Ore", rest
+	elseif prefix == "Pet" and Pets[rest] then
+		return "Creature", Pets[rest].Creature
 	elseif Crops[itemId] then
 		return "Crop", itemId
 	elseif Furniture.Items[itemId] then

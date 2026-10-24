@@ -11,6 +11,7 @@ local Furniture = require(ReplicatedStorage.Shared.Furniture)
 local IslandConcepts = require(ReplicatedStorage.Shared.IslandConcepts)
 local Lines = require(ReplicatedStorage.Shared.Lines)
 local Ores = require(ReplicatedStorage.Shared.Ores)
+local Pets = require(ReplicatedStorage.Shared.Pets)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
 local Dialogues = require(script.Parent.Dialogues)
@@ -40,7 +41,7 @@ local NPCS = {
 
 local SET_NAMES = { Log = "통나무 세트", Garden = "정원 세트" }
 
--- 상점 Id → 상품 목록 { Id(아이템), Name, Price, Desc }
+-- 상점 Id → (보는 사람) → 상품 목록 { Id(아이템), Name, Price, Desc, Once(하나만 가질 수 있다) }
 local SHOPS = {
 	Seeds = function()
 		local items = {}
@@ -64,7 +65,20 @@ local SHOPS = {
 		end)
 		return items
 	end,
+	Pets = function(player)
+		local items = {}
+		for id, pet in Pets do
+			local owned = Inventory.Count(player, "Pet_" .. id) > 0
+			table.insert(items, { Id = "Pet_" .. id, Name = pet.Name, Price = pet.Price, Order = pet.Order, Once = true,
+				Desc = pet.Desc .. (if owned then " · 함께 지내는 중" else "") })
+		end
+		table.sort(items, function(a, b)
+			return a.Order < b.Order
+		end)
+		return items
+	end,
 }
+local STALL = { Pets = "Seeds" } -- 도우미 동물은 모모 노점(씨앗 상점)에서 판다
 
 local NpcService = {}
 local sessions = {} -- [player] = { Npc = 정의, Model, Node = 노드 Id, Shown = 보여 준 선택지, Sold }
@@ -78,7 +92,10 @@ end
 
 local ACTIONS = {
 	OpenShop = function(player, session)
-		Remotes.Dialogue:FireClient(player, { Shop = session.Npc.Shop, Title = session.Npc.Name, Items = SHOPS[session.Npc.Shop](), Npc = session.Model })
+		Remotes.Dialogue:FireClient(player, { Shop = session.Npc.Shop, Title = session.Npc.Name, Items = SHOPS[session.Npc.Shop](player), Npc = session.Model })
+	end,
+	OpenPets = function(player, session)
+		Remotes.Dialogue:FireClient(player, { Shop = "Pets", Title = session.Npc.Name, Items = SHOPS.Pets(player), Npc = session.Model })
 	end,
 	SellCrops = function(player, session)
 		local total = 0
@@ -319,7 +336,7 @@ function NpcService.Start()
 	end)
 
 	Remotes.Shop.OnServerInvoke = function(player, shopId, itemId)
-		local list = type(shopId) == "string" and SHOPS[shopId] and SHOPS[shopId]()
+		local list = type(shopId) == "string" and SHOPS[shopId] and SHOPS[shopId](player)
 		local item
 		for _, entry in list or {} do
 			if entry.Id == itemId then
@@ -331,10 +348,12 @@ function NpcService.Start()
 		end
 		local near = false
 		for _, model in CollectionService:GetTagged("Npc") do
-			near = near or (model:GetAttribute("Shop") == shopId and inRange(player, model))
+			near = near or (model:GetAttribute("Shop") == (STALL[shopId] or shopId) and inRange(player, model))
 		end
 		if not near then
 			return false, "상점 주인에게 가까이 가 주세요"
+		elseif item.Once and Inventory.Count(player, item.Id) > 0 then
+			return false, "이미 함께 지내고 있어요"
 		elseif not Inventory.AddCoins(player, -item.Price) then
 			return false, "코인이 모자라요"
 		end

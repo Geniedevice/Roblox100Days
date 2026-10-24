@@ -128,5 +128,11 @@ handler(C, "Invite", A)
 handler(A, "Answer", C, false)
 check(A:GetAttribute("PartyId") == nil and lastToast(C) ~= nil, "거절하면 파티 없음, 초대한 사람에게 토스트")
 
+-- 7. 섬 연합 멤버는 파티원과 같은 권한(island-union.md)
+A:SetAttribute("UnionId", "u1")
+C:SetAttribute("UnionId", "u1")
+check(PartyService.Same(A, C) and not PartyService.Same(A, B), "같은 UnionId면 Same, 아니면 아니다")
+check(PartyService.CanHarvest(C, A), "연합 멤버도 주인이 켜면 수확")
+
 _G.PartyTest = nil
 return "PASS " .. passed
