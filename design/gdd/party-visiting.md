@@ -18,6 +18,8 @@
 4. **파티**: 최대 6명, 파티장 1명. `Interact("Invite", 상대)` → 상대에게 초대 카드(수락·거절, 30초). 수락하면 초대한 사람의 파티에 들어간다(초대한 사람이 파티가 없으면 새 파티, 그 사람이 파티장). 파티 상태는 서버 메모리에만 있고 `PartyId`·`PartyLeader` 속성으로 모두에게 보인다.
    - 이미 파티에 있는 사람은 초대할 수 없다(먼저 나가야 한다). 한 사람에게 걸린 초대는 하나뿐이다.
    - `Interact("LeaveParty")`로 나간다. 파티장이 나가면 가장 먼저 들어온 사람이 이어받는다. 한 명만 남으면 파티가 사라진다.
+4-1. **인사하기**(2026-10-24): 다른 플레이어를 누르거나 8스터드 안에서 E → 손 흔들기·하트·"안녕!" 말풍선, 상대에게 토스트(파티가 아니어도 된다). 5초 안에 서로 인사하면 하이파이브. 처리는 `PartyPlayService`(party-play.md).
+4-2. **파티 놀거리**(2026-10-24): 파티 의뢰·파티 대회·이벤트 함께 받기 — party-play.md. 친구 창 맨 위 "파티 놀이" 줄, 왼쪽 위 파티 카드.
 5. **권한**(서버가 판정, 주인 = 그 섬 주인). 같은 섬 연합 멤버는 파티원과 같다(`PartyService.Same`이 `UnionId`도 본다, island-union.md):
 
    | 행동 | 방문객 | 파티원 | 주인 |
@@ -49,7 +51,7 @@
 ## Dependencies
 
 - 기대는 것: Island Generation·IslandService(섬 기록·스폰), Data Persistence(설정), Collection Dex(섬 기록), Farming·Fishing·NPC Dialogue(권한)
-- 이것에 기대는 것: Island Union(파티가 있어야 편입 제안)
+- 이것에 기대는 것: Island Union(파티가 있어야 편입 제안), Party Play(`PartyService.Members`로 파티원을 읽는다)
 - 양방향: farming.md(파티원 물주기·수확), fishing.md(남의 섬 낚시), npc-dialogue.md(남의 섬 루미), collection-dex.md(방문 기록)
 
 ## Tuning Knobs

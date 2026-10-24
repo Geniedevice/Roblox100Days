@@ -27,7 +27,7 @@ Lines.ko = {
 	OPT_DECOR_TIP = "꾸미기 요령",
 
 	GUIDE_INTRO = "어서 와! 나는 하늘섬 안내인 루미야. 이 섬은 땅 조각(청크) 16개로 되어 있어.",
-	GUIDE_INTRO2 = "여기 상점 거리를 가운데로 서쪽은 농장, 동쪽은 낚시터, 남쪽은 집터, 북서쪽은 광산이야.",
+	GUIDE_INTRO2 = "여기 상점 거리를 가운데로 서쪽은 농장, 동쪽은 낚시터, 남쪽은 집터, 북쪽은 숲이야.",
 	GUIDE_INTRO3 = "낚은 물고기와 캔 광석은 내가 사 줄게. 코인을 모으면 나한테서 밭을 열고 섬도 넓힐 수 있어!",
 	GUIDE_HELLO = "오늘은 섬을 어떻게 가꿔 볼까?",
 	GUIDE_SOLD = "{Sold}코인이야! 이 섬 물고기랑 광석은 질이 좋다니까.",
@@ -36,11 +36,11 @@ Lines.ko = {
 	GUIDE_LAND_DONE = "새 땅이 붙었어! 섬 가장자리를 봐.",
 	GUIDE_NO_COINS = "코인이 조금 모자라. 물고기나 광석을 더 모아 와!",
 	GUIDE_NO_LAND = "더 붙일 땅이 없어. 이 섬은 이제 아주 넓어!",
-	GUIDE_EXPAND = "{ChunkPrice}코인이면 섬 가장자리에 땅 하나를 붙일 수 있어. 어떤 땅으로 만들까?",
+	GUIDE_EXPAND = "{ChunkPrice}코인이면 구름 판 자리에 땅 하나를 붙일 수 있어. 어떤 땅이 될지(바이옴)는 붙여 봐야 알아! 어떤 땅으로 만들까?",
 	GUIDE_INFO = "여기는 {Island}이야. 섬마다 시드가 달라서 나는 것도 달라.",
 	GUIDE_INFO2 = "이 섬 명물은 물고기 {SpecialFish}, 광석 {SpecialOre}, 작물 {SpecialCrop}! 친구 섬에는 또 다른 게 있을 거야.",
 	GUIDE_ZONES = "농장 밭에서 씨앗을 키우고, 낚시터에서는 물을 눌러 낚싯대를 던져. 찌에 '!'가 뜨면 바로 다시 눌러!",
-	GUIDE_ZONES2 = "광산에서는 반짝이는 광석 블록을 여러 번 두드려 캐. 집터 오두막은 버니 가구로 꾸미면 돼.",
+	GUIDE_ZONES2 = "숲에는 가끔 반짝이는 광석 바위가 솟아. 여러 번 두드려 캐 봐. 집터 오두막은 버니 가구로 꾸미면 돼.",
 	OPT_SELL_GOODS = "물고기·광석 팔기",
 	OPT_BUY_FIELD = "밭 열기 ({FieldPrice}코인)",
 	OPT_EXPAND = "섬 넓히기 ({ChunkPrice}코인)",
@@ -49,8 +49,7 @@ Lines.ko = {
 	OPT_BACK = "다시 생각해 볼게",
 	OPT_ZONE_FARM = "농장 땅 (밭 자리 4개)",
 	OPT_ZONE_HOUSE = "집터 땅 (꾸미기)",
-	OPT_ZONE_MINE = "광산 땅 (광석 바위산)",
-	OPT_ZONE_WILD = "숲 땅 (나무·생물)",
+	OPT_ZONE_WILD = "숲 땅 (나무·생물·광석 바위)",
 
 	-- NPC끼리 잡담(말풍선)
 	CHAT_MOMO_1 = "버니, 오늘 바람 냄새가 달콤하지 않아?",

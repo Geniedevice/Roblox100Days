@@ -25,6 +25,32 @@ function WorldPointer.CastMouse(ignore)
 	return cast(workspace.CurrentCamera:ViewportPointToRay(location.X, location.Y), ignore)
 end
 
+-- 행동 프롬프트 하나(E · 게임패드 X · 모바일 버튼, 이 클라이언트에만 있다). 돌려준 show(위치, 행동 글, 대상 글)로 옮겨 띄우고
+-- show(nil)로 숨긴다. 대상이 다시 지어져도 프롬프트가 같이 지워지지 않게 투명한 앵커 Part에 단다. 밭(Hud)·낚시·광산(ActivityClient)
+function WorldPointer.Prompt(name, onTriggered)
+	local anchor = Instance.new("Part")
+	anchor.Name = name
+	anchor.Anchored, anchor.CanCollide, anchor.CanQuery, anchor.CanTouch = true, false, false, false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.one
+	anchor.Parent = workspace
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 16
+	prompt.RequiresLineOfSight = false
+	prompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+	prompt.Enabled = false
+	prompt.Triggered:Connect(onTriggered)
+	prompt.Parent = anchor
+	return function(position, action, object)
+		if position then
+			anchor.CFrame = CFrame.new(position)
+			prompt.ActionText, prompt.ObjectText = action, object or ""
+		end
+		prompt.Enabled = position ~= nil
+	end
+end
+
 -- 누를 때마다 callback(RaycastResult)
 function WorldPointer.OnTap(callback)
 	UserInputService.InputBegan:Connect(function(input, processed)

@@ -1,7 +1,9 @@
 -- 시드 하나로 마인크래프트식 복셀 하늘섬을 만든다. 같은 시드 + 같은 산 땅 목록 = 같은 섬이라 저장은 그 둘뿐이다.
 -- 섬은 16×16블록 청크로 되어 있고 시작 섬은 4×4 = 16청크다. 청크마다 구역이 있다(명세: design/gdd/island-zones.md):
 --   상점 거리 Plaza(스폰·노점 NPC·안내인), 농장 Farm(3×3 밭 자리 4개), 낚시터 Fishing(호수·부두), 집터 House(오두막·가구),
---   광산 Mine(계단식 바위산·광석), 숲 Wild(컨셉 지형 그대로). 땅을 사면(안내인) Frontier 순서로 가장자리에 청크가 붙는다.
+--   숲 Wild(컨셉 지형 그대로, 광석 바위가 솟는 곳 — MineService). 광산 구역은 2026-10-24에 없앴다(저장된 Mine은 숲으로 읽는다).
+-- 땅을 사면(안내인) 섬에 붙은 빈 자리 하나(무작위)에 청크가 붙고, 그 청크만 따로 만든다(GenerateChunk). 바이옴(컨셉)은
+-- 살 때 무작위로 정해 저장한다(Biome). 시작 섬은 시드 컨셉, 산 청크는 저마다의 바이옴 표면·나무·땅 장식·색을 쓴다.
 -- 마인크래프트 1.18+ 월드 생성 순서를 하늘섬에 옮겼다(명세: design/gdd/island-generation.md):
 --  1. 기후 → 컨셉: 시드에서 T·H·E·W를 뽑아 가장 가까운 기후점의 컨셉(다중 노이즈 바이옴 소스)
 --  2. 지형 밀도: density = base3D + 4 × quarterNegative(depth × 0.5). 숲은 offset 스플라인(침식·봉우리 PV)·뾰족함,
@@ -31,15 +33,17 @@ IslandGen.Zones = {
 	Farm = { Name = "농장" },
 	Fishing = { Name = "낚시터" },
 	House = { Name = "집터" },
-	Mine = { Name = "광산" },
 	Wild = { Name = "숲" },
 }
-IslandGen.BuyZones = { "Farm", "House", "Mine", "Wild" } -- 안내인에게서 살 수 있는 땅 종류(대화 선택지 순서)
+IslandGen.BuyZones = { "Farm", "House", "Wild" } -- 안내인에게서 살 수 있는 땅 종류(대화 선택지 순서)
+IslandGen.MAX_CHUNKS = 36 -- 시작 16 + 산 땅 20
+local BOUND = 4 -- 청크 좌표 −4..3(8×8) 안에서만 넓힌다(슬롯 간격·연합 자리 안)
+local APRON = 3 -- 산 청크는 옆 청크 해안이 깎인 틈(0~3블록)까지 메운다
 
 -- 시작 섬(줄 = cz −2..1 북→남, 칸 = cx −2..1 서→동)
 local START = {
-	{ "Mine", "Mine", "Wild", "Wild" },
-	{ "Mine", "Farm", "Plaza", "Fishing" },
+	{ "Wild", "Wild", "Wild", "Wild" },
+	{ "Wild", "Farm", "Plaza", "Fishing" },
 	{ "Wild", "Farm", "Plaza", "Fishing" },
 	{ "Wild", "Wild", "House", "House" },
 }
@@ -49,11 +53,6 @@ for row, zones in START do
 		table.insert(IslandGen.Start, { X = col - 3, Z = row - 3, Zone = zone })
 	end
 end
--- 땅을 살 때 붙는 자리: 시작 섬 둘레를 남 → 서 → 북 → 동(낚시터 폭포 쪽은 늦게) 순서로 고르게 돈다
-IslandGen.Frontier = {
-	{ 0, 2 }, { 1, 2 }, { -3, 0 }, { -3, -1 }, { -1, -3 }, { 0, -3 }, { -1, 2 }, { -2, 2 }, { -3, 1 }, { -3, -2 },
-	{ -2, -3 }, { 1, -3 }, { 2, 1 }, { 2, -2 }, { 2, -1 }, { 2, 0 }, { 2, 2 }, { -3, 2 }, { -3, -3 }, { 2, -3 },
-}
 
 -- 상점 거리 배치(블록 좌표). Spawn은 길 가운데(x = 8은 길 블록 7·8 사이), NPC는 Face 쪽을 본다
 local SPAWN = Vector3.new(8, YARD, 8)
@@ -141,36 +140,60 @@ local function chunkKey(cx, cz)
 	return (cx + 64) * 128 + (cz + 64)
 end
 
--- 시작 섬 + 산 땅(저장 목록, 잘못된 칸은 건너뛴다) → 청크 목록, [chunkKey] = 구역
+-- 시작 섬 + 산 땅(저장 목록, 잘못된 칸은 건너뛴다) → 청크 목록 { X, Z, Zone, Biome? }, [chunkKey] = 구역
 function IslandGen.Chunks(extra)
 	local list, map = {}, {}
-	local function add(c)
+	local function add(c, zone)
 		local key = chunkKey(c.X, c.Z)
 		if not map[key] then
-			map[key] = c.Zone
-			table.insert(list, { X = c.X, Z = c.Z, Zone = c.Zone })
+			map[key] = zone
+			table.insert(list, { X = c.X, Z = c.Z, Zone = zone, Biome = if Concepts[c.Biome or ""] then c.Biome else nil })
 		end
 	end
 	for _, c in IslandGen.Start do
-		add(c)
+		add(c, c.Zone)
 	end
 	for _, c in extra or {} do
-		if type(c) == "table" and table.find(IslandGen.BuyZones, c.Zone) and type(c.X) == "number" and type(c.Z) == "number" then
-			add(c)
+		local zone = type(c) == "table" and (if c.Zone == "Mine" then "Wild" else c.Zone)
+		if zone and table.find(IslandGen.BuyZones, zone) and type(c.X) == "number" and type(c.Z) == "number" then
+			add(c, zone)
 		end
 	end
 	return list, map
 end
 
--- 다음에 붙을 땅 자리 { X, Z } (다 샀으면 nil)
-function IslandGen.NextChunk(extra)
-	local _, map = IslandGen.Chunks(extra)
-	for _, spot in IslandGen.Frontier do
-		if not map[chunkKey(spot[1], spot[2])] then
-			return { X = spot[1], Z = spot[2] }
+-- 섬에 붙은(상하좌우) 빈 청크 자리 목록 { { X, Z } } — 땅을 살 때 여기서 하나를 무작위로 고른다. 다 찼으면 빈 목록
+function IslandGen.Candidates(extra)
+	local list, map = IslandGen.Chunks(extra)
+	local spots = {}
+	if #list >= IslandGen.MAX_CHUNKS then
+		return spots
+	end
+	local seen = {}
+	for _, c in list do
+		for _, d in { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } } do
+			local x, z = c.X + d[1], c.Z + d[2]
+			local key = chunkKey(x, z)
+			if not map[key] and not seen[key] and x >= -BOUND and x < BOUND and z >= -BOUND and z < BOUND then
+				seen[key] = true
+				table.insert(spots, { X = x, Z = z })
+			end
 		end
 	end
-	return nil
+	table.sort(spots, function(a, b) -- 순서를 고정한다(무작위 고르기가 재현되게)
+		return if a.X ~= b.X then a.X < b.X else a.Z < b.Z
+	end)
+	return spots
+end
+
+-- 바이옴(컨셉) Id 목록(이름 순, 무작위로 하나 고를 때)
+function IslandGen.Biomes()
+	local ids = {}
+	for id in Concepts do
+		table.insert(ids, id)
+	end
+	table.sort(ids)
+	return ids
 end
 
 -- 기후에 가장 가까운 컨셉(마인크래프트 다중 노이즈: 매개변수 공간의 최근접점)
@@ -190,7 +213,8 @@ end
 --   Waterfalls = { { Position(블록), Direction } }, YardY(블록), Spawn(블록), Npc = { [Id] = { Position, Face } },
 --   Fields = { Vector2(3×3 밭 왼쪽 위 칸) } 순서 고정, Chunks = 청크 목록, ZoneAt(x, z) → 구역 Id 또는 nil }
 -- extra = profile.Chunks(산 땅), forceConcept = 미리보기·시험용 컨셉 고정
-function IslandGen.Generate(seed, extra, forceConcept)
+-- only = 산 청크 하나만 만든다(GenerateChunk): 그 청크 + 둘레 APRON블록(옆 땅이 없는 칸만, filled(x, z)가 false)
+function IslandGen.Generate(seed, extra, forceConcept, only, filled)
 	local rng = Random.new(seed)
 	local salt = seed % 1000003 * 37
 	local function r(x, y, z, k) -- 자리마다 정해진 0..1(시드마다 다르다)
@@ -220,7 +244,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 		Spaghetti = concept.Caves.Spaghetti == true,
 		Noodle = concept.Caves.Noodle == true,
 	}
-	local hasWaterfall = rng:NextNumber() < (concept.Waterfall or 0)
+	local hasWaterfall = rng:NextNumber() < (concept.Waterfall or 0) and not only
 
 	-- 청크와 구역
 	local chunks, owned = IslandGen.Chunks(extra)
@@ -232,6 +256,15 @@ function IslandGen.Generate(seed, extra, forceConcept)
 		cx0, cx1, cz0, cz1 = math.min(cx0, c.X), math.max(cx1, c.X), math.min(cz0, c.Z), math.max(cz1, c.Z)
 	end
 	local bx0, bx1, bz0, bz1 = cx0 * CHUNK, cx1 * CHUNK + CHUNK - 1, cz0 * CHUNK, cz1 * CHUNK + CHUNK - 1
+	local building = chunks -- 이번에 만드는 청크(구조물·밭·숲 장식을 놓는 곳)
+	if only then
+		building = { only }
+		bx0, bx1 = only.X * CHUNK - APRON, only.X * CHUNK + CHUNK - 1 + APRON
+		bz0, bz1 = only.Z * CHUNK - APRON, only.Z * CHUNK + CHUNK - 1 + APRON
+	end
+	local function inOnly(x, z)
+		return x // CHUNK == only.X and z // CHUNK == only.Z
+	end
 
 	-- (x, z) 칸 가운데에서 pred(구역)가 참인 가장 가까운 청크까지 거리(블록, ±2청크 안, 없으면 2청크)
 	local function chunkDistance(x, z, pred)
@@ -272,7 +305,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	local midX, midZ = (bx0 + bx1 + 1) / 2, (bz0 + bz1 + 1) / 2
 	local halfW, halfD = (bx1 - bx0 + 1) / 2, (bz1 - bz0 + 1) / 2
 	local satellites = {}
-	for _ = 1, rng:NextInteger(concept.Satellites[1], concept.Satellites[2]) do
+	for _ = 1, if only then 0 else rng:NextInteger(concept.Satellites[1], concept.Satellites[2]) do
 		local radius = rng:NextNumber(3, 6)
 		local angle = rng:NextNumber(0, 2 * math.pi)
 		local c, s = math.cos(angle), math.sin(angle)
@@ -445,6 +478,9 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	for x = minX, maxX do
 		for z = minZ, maxZ do
 			local zone = if x >= bx0 and x <= bx1 and z >= bz0 and z <= bz1 then zoneAt(x, z) else nil
+			if zone and only and not inOnly(x, z) and filled(x, z) then
+				zone = nil -- 옆 청크에 이미 땅이 있는 칸(깎인 해안 틈만 메운다)
+			end
 			local top, bottom, water, flat, edge
 			if zone then
 				top, bottom, water, flat, edge = mainColumn(x, z, zone)
@@ -591,50 +627,14 @@ function IslandGen.Generate(seed, extra, forceConcept)
 		if top then
 			for y = bottom, top do
 				if get(x, y, z) == STONE then
-					local id = if isFlat and y == top then topBlock else decide(rules, x, y, z, key, isFlat)
-					-- 광맥: 돌 속 석탄 덩어리, 위쪽 구리·아래쪽 철 띠(마인크래프트 ore vein). 윗면 6블록 안 절벽에만
-					-- (섬 밑면까지 넣으면 밑면 Part가 합쳐지지 않는다)
-					if (id == STONE or id == ID.Deepslate) and top - y <= 6 then
-						local vein = math.abs(noise3(x * 0.12, y * 0.12, z * 0.12, noise.Vein))
-						if vein < 0.06 then
-							id = if y > -4 then ID.CopperOre else ID.IronOre
-						elseif noise3(x * 0.3, y * 0.3, z * 0.3, noise.Ore) > 0.6 then
-							id = ID.CoalOre
-						end
-					end
-					set(x, y, z, id)
+					-- 광석은 지형에 박지 않는다(숲 빈 땅에 솟는 광석 바위, MineService)
+					set(x, y, z, if isFlat and y == top then topBlock else decide(rules, x, y, z, key, isFlat))
 				end
 			end
 		end
 	end
 
-	-- 광산 광석: 광산 구역 윗면 3블록 안의 드러난 바위에 섬 획득물 표(시드)의 비율로 박는다(옆면 7%, 윗면 1.5%)
-	local loot = Loot.ForIsland(seed, conceptId)
-	local oreBlocks = {}
-	for id, block in Blocks.List do
-		if block.Ore then
-			oreBlocks[block.Ore] = id
-		end
-	end
-	local function rocky(id)
-		local block = Blocks.List[id]
-		return block ~= nil and (id == STONE or id == ID.Deepslate or id == ID.Calcite or block.Name:find("Terracotta") ~= nil)
-	end
-	for _, c in columns do
-		local x, z, key = c.X, c.Z, c.Key
-		local top = columnTop[key]
-		if c.Zone == "Mine" and top then
-			for y = top, top - 3, -1 do
-				if rocky(get(x, y, z)) then
-					local side = get(x + 1, y, z) == AIR or get(x - 1, y, z) == AIR or get(x, y, z + 1) == AIR or get(x, y, z - 1) == AIR
-					local open = side or get(x, y + 1, z) == AIR
-					if open and r(x, y, z, 31) < (if side then 0.07 else 0.015) then
-						set(x, y, z, oreBlocks[Loot.Pick(loot.Ores, loot.OreTotal, r(x, y, z, 37))])
-					end
-				end
-			end
-		end
-	end
+	local loot = Loot.ForIsland(seed, conceptId) -- 바이옴마다 물고기·광석 비율이 다르다(광석 바위는 그 땅 바이옴 표)
 
 	-- 5. 구조물(블록) — 자리를 쓴 칸은 reserved에 적어 장식이 올라오지 않게 한다
 	local decor, waterfalls, reserved = {}, {}, {}
@@ -658,7 +658,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end
 
 	-- 상점 거리: 십자 길(가로 z 0·1, 세로 x 7·8), 노점 두 개, 길모퉁이 등불, 안내도
-	if owned[chunkKey(0, 0)] == "Plaza" then
+	if not only and owned[chunkKey(0, 0)] == "Plaza" then
 		for x = bx0, bx1 do
 			for z = bz0, bz1 do
 				local cross = (z == 0 or z == 1) and x >= -16 and x <= 17 or (x == 7 or x == 8) and z >= -15 and z <= 19
@@ -711,7 +711,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 
 	-- 농장: 청크마다 3×3 밭 자리 4개(둘레 길), 가운데 허수아비. 순서 = 시작 청크(스폰에서 가까운 밭부터) → 산 순서
 	local fields = {}
-	for index, c in chunks do
+	for index, c in building do
 		if c.Zone == "Farm" then
 			local mine = {}
 			for _, o in FIELD_OFFSETS do
@@ -733,7 +733,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 				return da < db
 			end)
 			for _, field in mine do
-				table.insert(fields, { Field = field, Start = index <= #IslandGen.Start, Distance = (field - Vector2.new(SPAWN.X, SPAWN.Z)).Magnitude })
+				table.insert(fields, { Field = field, Start = not only and index <= #IslandGen.Start, Distance = (field - Vector2.new(SPAWN.X, SPAWN.Z)).Magnitude })
 			end
 			local sx, sz = c.X * CHUNK + 7, c.Z * CHUNK + 7
 			if surfaceAt(sx, sz) then
@@ -766,7 +766,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end
 
 	-- 낚시터 부두: 가로 길(z 0·1)이 서쪽 물가에서 호수로 6칸 뻗는다(물 위 판자 + 끝 기둥)
-	if owned[chunkKey(1, 0)] == "Fishing" then
+	if not only and owned[chunkKey(1, 0)] == "Fishing" then
 		for z = 0, 1 do
 			local placed = 0
 			for x = CHUNK, 2 * CHUNK - 1 do
@@ -793,7 +793,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end
 
 	-- 집터: 첫 집터 청크에 9×9 오두막(문은 스폰 쪽). 바닥 판자·조약돌 테두리, 통나무 모서리, 유리창, 계단식 지붕
-	for _, c in chunks do
+	for _, c in if only then {} else chunks do -- 오두막은 시작 섬 첫 집터에만(산 집터는 가구 마당)
 		if c.Zone == "House" then
 			local x0, z0 = c.X * CHUNK + 4, c.Z * CHUNK + 4
 			local dx, dz = SPAWN.X - (x0 + 4.5), SPAWN.Z - (z0 + 4.5)
@@ -843,7 +843,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end
 
 	-- 구역 팻말: 시작 구역마다 하나(스폰을 본다)
-	for _, sign in { { "Farm", -2, 3 }, { "Fishing", 16, 3 }, { "House", 6, 16 }, { "Mine", -2, -17 } } do
+	for _, sign in if only then {} else { { "Farm", -2, 3 }, { "Fishing", 16, 3 }, { "House", 6, 16 } } do
 		local x, z = sign[2], sign[3]
 		local top = surfaceAt(x, z)
 		if top and zoneAt(x, z) == sign[1] then
@@ -863,6 +863,9 @@ function IslandGen.Generate(seed, extra, forceConcept)
 		end
 		if wild and (zones[key] ~= "Wild" or flats[key] > 0.05 or edges[key] < 3 or nearWater(x, z, 2)) then
 			return nil -- 나무는 숲 안쪽(구역 경계·해안·물가에서 떨어져)
+		end
+		if wild and only and (not inOnly(x, z) or x % CHUNK < 2 or x % CHUNK > CHUNK - 3 or z % CHUNK < 2 or z % CHUNK > CHUNK - 3) then
+			return nil -- 산 청크 나무는 그 청크 안쪽에만(옆 땅 나무와 겹치지 않게)
 		end
 		return top
 	end
@@ -1007,7 +1010,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 
 	-- 얼음 가시, 쓰러진 통나무(1.21.5), 바위: 숲 청크마다 개수/5 확률로 하나씩(자리는 청크 안 해시)
 	local function perWildChunk(count, salt, place)
-		for _, c in chunks do
+		for _, c in building do
 			if c.Zone == "Wild" then
 				for k = 1, math.ceil(count / 5) do
 					if r(c.X, k, c.Z, salt) < count / 5 then
@@ -1049,7 +1052,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end)
 
 	-- 자수정 정동: 시작 광산 북서쪽 청크 언덕 속 껍질(심층암 → 방해석 → 자수정)과 스폰 쪽으로 뚫린 굴
-	if features.Geode and owned[chunkKey(-2, -2)] == "Mine" then
+	if features.Geode and not only and owned[chunkKey(-2, -2)] == "Wild" then
 		local gx, gz = -2 * CHUNK + 8, -2 * CHUNK + 8
 		local gy = YARD + 4
 		local R = 5
@@ -1094,7 +1097,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end
 
 	-- 징검다리(아치 군도): 섬 가장자리에서 첫 작은 섬까지 2×2 발판, 한 번에 1블록 이하로 오르내린다
-	if features.Stepping and satellites[1] then
+	if features.Stepping and satellites[1] then -- (산 청크 만들 때는 작은 섬이 없다)
 		local target = satellites[1]
 		local ty = math.floor((satelliteColumn(target, target.X, target.Z)))
 		local dir = Vector2.new(target.X - midX, target.Z - midZ).Unit
@@ -1129,7 +1132,7 @@ function IslandGen.Generate(seed, extra, forceConcept)
 	end
 
 	-- 7. 땅 장식(Part로 그리는 작은 것): 윗면 블록마다 컨셉 확률 × 구역 배수로 하나
-	local COVER_SCALE = { Wild = 1, House = 0.35, Fishing = 0.4, Farm = 0.15, Plaza = 0.15, Mine = 0 }
+	local COVER_SCALE = { Wild = 1, House = 0.35, Fishing = 0.4, Farm = 0.15, Plaza = 0.15 }
 	local cover = {}
 	for kind, chance in concept.Cover do
 		table.insert(cover, { kind, chance })
@@ -1194,6 +1197,12 @@ function IslandGen.Generate(seed, extra, forceConcept)
 		ZoneAt = zoneAt,
 		Loot = loot,
 	}
+end
+
+-- 산 청크 하나: chunk = { X, Z, Zone, Biome }, extra = 그 청크까지 넣은 산 땅 목록(해안을 어디서 깎을지),
+-- filled(x, z) = 그 칸에 이미 땅이 있나(시작 섬·먼저 산 청크). 시드가 같아 노이즈(언덕·동굴)는 옆 땅과 이어진다
+function IslandGen.GenerateChunk(seed, extra, chunk, baseConcept, filled)
+	return IslandGen.Generate(seed, extra, chunk.Biome or baseConcept, chunk, filled)
 end
 
 return IslandGen

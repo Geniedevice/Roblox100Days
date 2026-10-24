@@ -21,6 +21,7 @@ local DexService = require(script.Parent.DexService)
 local Inventory = require(script.Parent.Inventory)
 local IslandGen = require(script.Parent.IslandGen)
 local IslandService = require(script.Parent.IslandService)
+local PartyPlayService = require(script.Parent.PartyPlayService)
 local PartyService = require(script.Parent.PartyService)
 
 local REACH = 20 -- 이 거리(스터드) 안에서만 농지를 만질 수 있다
@@ -161,6 +162,7 @@ local function onTile(player, owner, tile, seedId, byPet)
 		feedback(who, "Water", tile)
 		if helper then
 			toast(owner, player.DisplayName .. "님이 " .. crop.Name .. "에 물을 줬어요")
+			PartyPlayService.Count(player, "HelpWater")
 		end
 	elseif stage < 3 then
 		local left = math.ceil(secondsLeft(state, crop, p, now, rate) / 60)
@@ -170,10 +172,13 @@ local function onTile(player, owner, tile, seedId, byPet)
 		local special = island and island.Gen.Loot.SpecialCrop == state.Crop
 		local amount = if special and math.random() < Loot.SPECIAL_CROP_CHANCE then 2 else 1
 		Inventory.Add(owner, state.Crop, amount)
-		feedback(who, "Harvest", tile, { Item = state.Crop, Count = amount, Gift = helper, -- Gift: 핫바로 날아가지 않는다
+		feedback(who, "Harvest", tile, { Item = state.Crop, Count = amount, Gift = helper, Owner = owner, -- Gift: 핫바로 날아가지 않는다. Owner: 얻은 것 알림
 			Text = string.format("+%d %s%s", amount, crop.Name, if helper then " → " .. owner.DisplayName
 				elseif amount > 1 then " · 섬 명물!" else "") })
 		DexService.Record(owner, "Crops", state.Crop)
+		if who then -- 도우미 동물이 거둔 것은 파티 의뢰·대회에 세지 않는다
+			PartyPlayService.Count(who, "Harvest")
+		end
 		if helper then
 			toast(owner, string.format("%s님이 %s %d개를 거둬 줬어요", player.DisplayName, crop.Name, amount))
 		end

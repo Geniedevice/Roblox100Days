@@ -2,13 +2,20 @@
 -- 누르기: 내 섬 물 → 던지기(찌가 떠 있으면 당기기), 광석 블록 → 두드리기, 생물 → 쓰다듬기. 판정은 전부 서버.
 -- 표시: 찌가 포물선으로 날아가 물에 뜨고 낚싯줄(Beam)이 손에서 이어진다. 입질 때 찌 위 "!"(PC는 "클릭!"),
 -- 낚으면 물고기 모형이 플레이어 쪽으로 튀어 오른다. 광석 위에는 남은 타격 칸 막대(고스트가 따라간다).
+-- 안내: 앞 물가에 "낚시하기", 입질 때 "당기기!", 내 섬 광석에 "캐기 · 광석 이름", 생물·도우미 동물에 "쓰다듬기", 내 섬 집안일에
+-- "치우기", 섬 이벤트에 "열기·잡기·파 보기", 나무에 "흔들기", 다른 플레이어에 "인사하기"(E · 게임패드 X · 모바일 버튼, 밭 안내와 같은
+-- 프롬프트). 누르기(클릭·탭)도 같은 요청을 보낸다.
+-- 내 섬의 캘 수 있는 광석은 광석 색으로 반짝인다(캐면 꺼지고, 다시 솟으면 켜진다).
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Creatures = require(Shared:WaitForChild("Creatures"))
+local Pets = require(Shared:WaitForChild("Pets"))
 local Models = require(Shared:WaitForChild("Models"))
 local Ores = require(Shared:WaitForChild("Ores"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
@@ -41,6 +48,7 @@ end
 -- 낚시 표시: 플레이어마다 찌 하나 ------------------------------------------------------------------
 local bobbers = {} -- [player] = { Part, Beam, Bang, Token }
 local myCast = false
+local myBite = false -- 내 찌에 입질이 왔다(당기기 안내)
 
 local function clearBobber(who, sink)
 	local entry = who and bobbers[who]
@@ -196,9 +204,12 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 			clearBobber(who)
 		end
 		if who == player and (kind == "Miss" or kind == "Catch") then
-			myCast = false
+			myCast, myBite = false, false
 		end
 		return
+	end
+	if who == player and (kind == "Cast" or kind == "Bite" or kind == "Catch" or kind == "Miss") then
+		myBite = kind == "Bite"
 	end
 	if kind == "Cast" then
 		showCast(who, info.Position)
@@ -312,13 +323,185 @@ WorldPointer.OnTap(function(result)
 		myCast = false
 		return
 	end
-	local creature = taggedAncestor(target, "Creature")
-	if creature then
-		Remotes.Interact:FireServer("Pet", creature)
+	local event = taggedAncestor(target, "IslandEvent")
+	local animal = taggedAncestor(target, "Pet") or taggedAncestor(target, "Creature") -- 도우미 동물·섬 생물 쓰다듬기
+	local other = Players:GetPlayerFromCharacter(target:FindFirstAncestorOfClass("Model"))
+	if event then
+		Remotes.Interact:FireServer("Event", event)
+	elseif animal then
+		Remotes.Interact:FireServer("Pet", animal)
+	elseif other and other ~= player then
+		Remotes.Interact:FireServer("Greet", other)
 	elseif target:GetAttribute("Ore") and not target:GetAttribute("Depleted") and mine(target) then
 		Juice.Sound("button.wav", 1.6, 0.12)
 		Remotes.Interact:FireServer("Mine", target)
 	elseif target.Parent and target.Parent.Name == "Water" and islandOf(target) then -- 친구 섬 물도
 		Remotes.Interact:FireServer("Cast", target, result.Position)
+	elseif target.Parent and target.Parent.Name == "Plants" and islandOf(target) then
+		Remotes.Interact:FireServer("Shake", target)
 	end
+end)
+
+-- 광석 반짝임: 무엇을 캘 수 있는지 멀리서도 보이게(블록 겉면에서 바깥으로)
+local function onOre(part)
+	if not mine(part) or part:FindFirstChild("OreSparkle") then
+		return
+	end
+	local ore = Ores[part:GetAttribute("Ore")]
+	local emitter = Ui.make("ParticleEmitter", part, { Name = "OreSparkle", Texture = Juice.SPARKLE,
+		Color = ColorSequence.new(ore and ore.Color or Color3.new(1, 1, 1)), Size = NumberSequence.new(0.5, 0),
+		Lifetime = NumberRange.new(0.6, 1), Speed = NumberRange.new(0.4, 1.2), SpreadAngle = Vector2.new(30, 30), LightEmission = 1,
+		Rate = 2, ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface, ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward,
+		Enabled = not part:GetAttribute("Depleted") })
+	part:GetAttributeChangedSignal("Depleted"):Connect(function()
+		emitter.Enabled = not part:GetAttribute("Depleted")
+	end)
+end
+CollectionService:GetInstanceAddedSignal("Ore"):Connect(onOre)
+for _, part in CollectionService:GetTagged("Ore") do
+	onOre(part)
+end
+
+-- 낚시·광산·생물·집안일 안내 프롬프트(누르면 화면을 누른 것과 같은 요청, 판정은 서버). 터치 기기의 당기기는 HUD 버튼이 맡는다
+local ORE_REACH = 11 -- 캐릭터에서 광석까지(서버 REACH 22 안)
+local NEAR_REACH = 9 -- 생물·집안일까지(서버 쓰다듬기 14, 치우기 20 안)
+local CHORE_NAMES = { Weed = "잡초", Leaves = "낙엽", Pebble = "돌멩이" }
+local WATER_AHEAD = { 4, 7, 10 } -- 앞 이 거리들에서 물을 찾는다
+local greetedBy = {} -- [나에게 인사한 사람] = os.clock()(5초 안에 마주 인사하면 하이파이브)
+Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
+	if kind == "Greet" and info and info.Target == player and info.Player then
+		greetedBy[info.Player] = os.clock()
+	elseif kind == "HighFive" and info then
+		greetedBy[info.Player] = nil
+		greetedBy[info.Target] = nil
+	end
+end)
+local promptTarget -- { Kind = "Cast" | "Reel" | "Mine" | "Pet" | "Chore" | "Event" | "Shake" | "Greet", Part, Position }
+local showPrompt = WorldPointer.Prompt("ActivityPrompt", function()
+	local t = promptTarget
+	if not t then
+		return
+	elseif t.Kind == "Reel" then
+		Remotes.Interact:FireServer("Reel")
+		myCast, myBite = false, false
+	elseif t.Kind == "Cast" then
+		Remotes.Interact:FireServer("Cast", t.Part, t.Position)
+	elseif t.Kind == "Pet" or t.Kind == "Chore" or t.Kind == "Event" or t.Kind == "Shake" or t.Kind == "Greet" then
+		if t.Part.Parent then -- Greet이면 Part = 상대 Player
+			Remotes.Interact:FireServer(t.Kind, t.Part)
+		end
+	elseif t.Part.Parent and not t.Part:GetAttribute("Depleted") then
+		Juice.Sound("button.wav", 1.6, 0.12)
+		Remotes.Interact:FireServer("Mine", t.Part)
+	end
+end)
+
+local waterParams = RaycastParams.new()
+waterParams.FilterType = Enum.RaycastFilterType.Exclude
+local function waterAhead(root)
+	local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+	if look.Magnitude < 0.1 then
+		return nil
+	end
+	waterParams.FilterDescendantsInstances = { player.Character }
+	for _, d in WATER_AHEAD do
+		local hit = workspace:Raycast(root.Position + look.Unit * d + Vector3.new(0, 4, 0), Vector3.new(0, -24, 0), waterParams)
+		if hit and hit.Instance.Parent and hit.Instance.Parent.Name == "Water" and islandOf(hit.Instance) then
+			return hit
+		end
+	end
+	return nil
+end
+
+-- 섬 나무(Plants 폴더) 찾기: 2초마다 섬 목록을 다시 모은다
+local overlap = OverlapParams.new()
+overlap.FilterType = Enum.RaycastFilterType.Include
+local plantsAt = 0
+local function plantsNear(point)
+	if os.clock() - plantsAt > 2 then
+		plantsAt = os.clock()
+		local folders = {}
+		for _, island in workspace:FindFirstChild("Islands") and workspace.Islands:GetChildren() or {} do
+			local terrain = island:FindFirstChild("Terrain")
+			table.insert(folders, terrain and terrain:FindFirstChild("Plants"))
+		end
+		overlap.FilterDescendantsInstances = folders
+	end
+	return workspace:GetPartBoundsInRadius(point, 3, overlap)
+end
+
+-- 앞에 가장 가까운 대상(이벤트·광석·생물·도우미 동물·집안일·나무·플레이어) → { Kind, Part, Position }, 행동 글, 대상 글.
+-- bias = 점수에 더한다(이벤트는 먼저, 나무는 나중)
+local function thingAhead(root)
+	local front = root.Position + root.CFrame.LookVector * 3
+	local best, bestScore, action, object
+	local function consider(kind, part, position, reach, act, obj, bias)
+		if (position - root.Position).Magnitude > reach then
+			return
+		end
+		local score = (position - front).Magnitude + (bias or 0)
+		if not bestScore or score < bestScore then
+			best, bestScore, action, object = { Kind = kind, Part = part, Position = position + Vector3.new(0, 2, 0) }, score, act, obj
+		end
+	end
+	for _, part in CollectionService:GetTagged("Ore") do
+		if not part:GetAttribute("Depleted") and (part.Position - root.Position).Magnitude <= ORE_REACH and mine(part) then
+			local def = Ores[part:GetAttribute("Ore")]
+			consider("Mine", part, part.Position, ORE_REACH, "캐기", def and string.format("%s · %d번 두드리기", def.Name, def.Hits))
+		end
+	end
+	for _, model in CollectionService:GetTagged("Creature") do
+		local def = Creatures[model:GetAttribute("Creature") or ""]
+		consider("Pet", model, model:GetPivot().Position, NEAR_REACH, "쓰다듬기", def and def.Name)
+	end
+	for _, model in CollectionService:GetTagged("Chore") do
+		if model:GetAttribute("Owner") == player.UserId then
+			consider("Chore", model, model:GetPivot().Position, NEAR_REACH, "치우기",
+				(CHORE_NAMES[model:GetAttribute("Kind")] or "집안일") .. " · +3코인")
+		end
+	end
+	for _, model in CollectionService:GetTagged("Pet") do
+		local def = Pets[model:GetAttribute("Pet") or ""]
+		consider("Pet", model, model:GetPivot().Position, NEAR_REACH, "쓰다듬기", def and def.Name)
+	end
+	for _, model in CollectionService:GetTagged("IslandEvent") do
+		consider("Event", model, model:GetPivot().Position, 12, model:GetAttribute("Action") or "열기", model:GetAttribute("Label"), -3)
+	end
+	for _, part in plantsNear(front) do
+		consider("Shake", part, part.Position, NEAR_REACH, "흔들기", "나무", 2)
+	end
+	for _, other in Players:GetPlayers() do
+		local otherRoot = other ~= player and other.Character and other.Character:FindFirstChild("HumanoidRootPart")
+		if otherRoot then
+			local back = greetedBy[other] and os.clock() - greetedBy[other] < 5 -- 나에게 막 인사했다 → 마주 인사하면 하이파이브
+			consider("Greet", other, otherRoot.Position, 8, if back then "하이파이브!" else "인사하기", other.DisplayName)
+		end
+	end
+	return best, action, object
+end
+
+local lastPromptCheck = 0
+RunService.Heartbeat:Connect(function()
+	if os.clock() - lastPromptCheck < 0.1 then
+		return
+	end
+	lastPromptCheck = os.clock()
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local target, action, object
+	if root and Juice.State.Panels == 0 and not player:GetAttribute("DecorMode") then
+		local bobber = bobbers[player]
+		if myCast then
+			if myBite and not touch and bobber then
+				target, action = { Kind = "Reel", Position = bobber.Part.Position }, "당기기!"
+			end
+		else
+			target, action, object = thingAhead(root)
+			local water = not target and waterAhead(root)
+			if water then
+				target, action, object = { Kind = "Cast", Part = water.Instance, Position = water.Position }, "낚시하기", "찌 던지기"
+			end
+		end
+	end
+	promptTarget = target
+	showPrompt(target and target.Position + Vector3.new(0, 1, 0), action, object)
 end)

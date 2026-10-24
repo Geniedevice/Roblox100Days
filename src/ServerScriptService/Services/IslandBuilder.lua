@@ -2,10 +2,11 @@
 --  - 윗면 근처(기둥 윗면에서 1블록 안, 위가 빈 블록)·나무·비치는 블록: 블록마다 Part, 밝기를 좌표 해시로 흔들어 격자가 보인다
 --  - 그보다 깊은 절벽·섬 밑면, 물: 층마다 같은 블록끼리 직사각형으로 합친다(greedy meshing). 안 보이는 속 블록은 아무 쪽에나
 --    끼워 넣을 수 있어 층 하나가 몇 개의 큰 Part가 된다. 64×64 섬 기준 Part 수가 절반 아래로 준다
---  - 캘 수 있는 광석 블록 Part에는 Ore·Key 속성(MineService가 찾는다)
+--  - 캘 수 있는 광석 블록 Part에는 Ore·Key 속성과 태그 "Ore"(MineService, 클라이언트 반짝임·캐기 안내가 찾는다)
 -- 물·장식은 따로 폴더에, 폭포는 떨어지는 물 Part로.
 -- ponytail: 서버가 Part를 만들어 복제한다(섬당 수천 개). 서버 인원이 늘면 시드만 보내고 클라이언트가 같은 IslandGen으로
 -- 짓는 방식으로 바꾼다(충돌은 캐릭터를 가진 클라이언트가 계산하므로 가능).
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Blocks = require(ReplicatedStorage.Shared.Blocks)
@@ -234,14 +235,17 @@ local function waterfall(parent, origin, fall, bottomY)
 end
 
 -- 반환: Folder "Terrain"(아래에 Blocks 땅·Plants 나무·Water 물·Decor 장식). 아직 workspace에 붙이지 않는다
-function IslandBuilder.Build(island, origin)
+-- into = 이미 지은 Terrain(산 청크 하나를 그 폴더들에 더 짓는다). 색(Tint)은 island.Concept(산 청크면 그 바이옴)
+function IslandBuilder.Build(island, origin, into)
 	local concept = Concepts[island.Concept]
 	local tint = concept.Tint
 	local data = island.Data
-	local terrain = Instance.new("Folder")
+	local terrain = into or Instance.new("Folder")
 	terrain.Name = "Terrain"
-	local solids, plants = folder("Blocks", terrain), folder("Plants", terrain)
-	local water, decor = folder("Water", terrain), folder("Decor", terrain)
+	local solids = terrain:FindFirstChild("Blocks") or folder("Blocks", terrain)
+	local plants = terrain:FindFirstChild("Plants") or folder("Plants", terrain)
+	local water = terrain:FindFirstChild("Water") or folder("Water", terrain)
+	local decor = terrain:FindFirstChild("Decor") or folder("Decor", terrain)
 	local min, size = island.Min, island.Size
 	local nx, ny, nz = size.X, size.Y, size.Z
 	local readu8 = buffer.readu8
@@ -309,6 +313,7 @@ function IslandBuilder.Build(island, origin)
 						if block.Ore then
 							part:SetAttribute("Ore", block.Ore)
 							part:SetAttribute("Key", x .. "," .. y .. "," .. z)
+							CollectionService:AddTag(part, "Ore")
 						end
 						part.Parent = if block.Plant then plants else solids
 						count += 1
@@ -390,8 +395,8 @@ function IslandBuilder.Build(island, origin)
 	for _, fall in island.Waterfalls do
 		waterfall(decor, origin, fall, bottomY)
 	end
-	terrain:SetAttribute("BlockParts", count)
-	return terrain
+	terrain:SetAttribute("BlockParts", (if into then terrain:GetAttribute("BlockParts") or 0 else 0) + count)
+	return terrain, count
 end
 
 return IslandBuilder

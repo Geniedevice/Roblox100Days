@@ -66,6 +66,11 @@ local ACTIONS = {
 }
 ACTIONS.Clean = { Steps = { ACTIONS.Harvest.Steps[1], ACTIONS.Harvest.Steps[2], { 0.07, HARVEST_HIT } } }
 ACTIONS.Pickup = { Steps = { { 0.18, PLACE_HIT }, { 0.04, PLACE_HIT } } }
+ACTIONS.Shake = ACTIONS.Clean -- 나무 흔들기
+ACTIONS.EventOpen = ACTIONS.Clean -- 선물 열기·나비 잡기·땅 파 보기
+ACTIONS.PetLove = ACTIONS.Pet -- 도우미 동물 쓰다듬기
+ACTIONS.Greet = ACTIONS.Wave -- 인사하기
+ACTIONS.HighFive = ACTIONS.Wave -- 하이파이브(두 사람 모두)
 
 local originals = setmetatable({}, { __mode = "k" }) -- [관절] = 처음 C0·CFrame
 local playing = setmetatable({}, { __mode = "k" }) -- [캐릭터] = 지금 동작 번호(새 동작이 오면 앞의 것을 끊는다)
@@ -166,6 +171,10 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 		end
 	end
 	task.spawn(play, character, kind)
+	local partner = kind == "HighFive" and info.Target and info.Target.Character
+	if partner then
+		task.spawn(play, partner, kind)
+	end
 end)
 
 -- 대화가 새로 시작되면(앞 대사가 없을 때) NPC가 손을 흔든다

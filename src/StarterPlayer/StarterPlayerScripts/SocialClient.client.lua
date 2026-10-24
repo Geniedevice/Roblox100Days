@@ -1,7 +1,9 @@
 -- 친구 창: HUD 오른쪽 기둥 "친구" → 서버의 다른 플레이어 줄(얼굴·이름·섬 컨셉·청크·파티 표시, "놀러 가기"·"초대")과
 -- 아래쪽 내 파티(인원/6, 나가기)·"우리 섬으로". 초대 카드(수락·거절, 시간 막대)와 남의 섬에 있을 때 위쪽 "○○의 섬 · 집으로" 알약.
 -- 섬 연합: 파티원 줄 "섬 잇기"(같은 연합이면 "연합" 표시), 같은 초대 카드로 섬 잇기 요청, 아래쪽 "연합 끊기".
--- 판정은 전부 서버(PartyService·UnionService). 명세: design/gdd/party-visiting.md, island-union.md
+-- 파티 놀이: 왼쪽 위 파티 카드(의뢰 막대, 대회 타이머·점수)와 친구 창 맨 위 "파티 놀이" 줄(파티장은 대회 열기).
+-- 판정은 전부 서버(PartyService·UnionService·PartyPlayService). 명세: design/gdd/party-visiting.md, island-union.md, party-play.md
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -16,7 +18,8 @@ local Ui = require(script.Parent:WaitForChild("Ui"))
 local player = Players.LocalPlayer
 local touch = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 local MAX = 6 -- PartyService.MAX와 같게
-local WATCHED = { "PartyId", "PartyLeader", "IslandConcept", "IslandChunks", "Visiting", "UnionId" }
+local WATCHED = { "PartyId", "PartyLeader", "IslandConcept", "IslandChunks", "Visiting", "UnionId", "PartyQuest", "PartyContest" }
+local CONTESTS = { { "Fish", "낚시 대회" }, { "Harvest", "수확 대회" }, { "Ore", "채굴 대회" } } -- PartyPlayService.CONTESTS와 같게
 
 local gui = Ui.make("ScreenGui", nil, { Name = "Social", ResetOnSpawn = false, DisplayOrder = 6 })
 
@@ -126,6 +129,42 @@ local function row(order, other)
 	end
 end
 
+-- 서버가 단 JSON 속성(PartyQuest·PartyContest)
+local function decode(key)
+	local raw = player:GetAttribute(key)
+	local ok, value = pcall(HttpService.JSONDecode, HttpService, raw or "")
+	return if raw and ok then value else nil
+end
+
+-- "파티 놀이" 줄: 지금 의뢰, 파티장은 대회 버튼 셋
+local function playRow()
+	local frame = Ui.make("Frame", list, { Name = "PartyPlay", LayoutOrder = 0, Size = UDim2.new(1, 0, 0, 100), BackgroundColor3 = Ui.BANNER })
+	Ui.corner(frame, 14)
+	Ui.stroke(frame, 2.5)
+	local quest, contest = decode("PartyQuest"), decode("PartyContest")
+	Ui.text(frame, "파티 놀이", 17, { FontFace = Ui.FONT_HEAVY, Position = UDim2.fromOffset(14, 8), Size = UDim2.fromOffset(90, 26),
+		TextXAlignment = Enum.TextXAlignment.Left })
+	Ui.text(frame, if quest then string.format("의뢰: %s %d / %d", quest.Label, math.min(quest.Have, quest.Need), quest.Need) else "의뢰 준비 중", 15,
+		{ Position = UDim2.fromOffset(108, 8), Size = UDim2.new(1, -120, 0, 26), TextColor3 = Ui.MUTED, TextWrapped = false,
+			TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
+	local buttons = Ui.make("Frame", frame, { Position = UDim2.fromOffset(10, 44), Size = UDim2.new(1, -20, 0, 46), BackgroundTransparency = 1 })
+	Ui.make("UIListLayout", buttons, { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+	if contest then
+		Ui.text(buttons, contest.Label .. " 중 · 왼쪽 카드에서 점수를 봐요", 15, { TextColor3 = Ui.MUTED })
+	elseif player:GetAttribute("PartyLeader") then
+		for i, entry in CONTESTS do
+			local button = Ui.button(buttons, entry[2], { Name = "Contest" .. entry[1], LayoutOrder = i, Size = UDim2.new(1 / 3, -6, 1, 0), TextSize = 15 },
+				i == 1)
+			button.Activated:Connect(function()
+				Remotes.Interact:FireServer("Contest", nil, entry[1])
+				Juice.Sound("button.wav", 1.2, 0.3)
+			end)
+		end
+	else
+		Ui.text(buttons, "파티장이 대회(낚시·수확·채굴)를 열 수 있어요", 15, { TextColor3 = Ui.MUTED })
+	end
+end
+
 local function render()
 	clearList()
 	local others = {}
@@ -160,6 +199,9 @@ local function render()
 		if sameUnion(other) then
 			islands += 1
 		end
+	end
+	if members > 0 then
+		playRow()
 	end
 	partyText.Text = (if members > 0 then string.format("파티 %d / %d명", members, MAX) else "파티 없음 · 친구를 초대해 보세요")
 		.. (if islands > 0 then string.format("\n연합 %d섬", islands) else "")
@@ -324,5 +366,80 @@ local function onVisiting()
 end
 player:GetAttributeChangedSignal("Visiting"):Connect(onVisiting)
 onVisiting()
+
+-- 파티 카드(왼쪽 위, 파티일 때만): 의뢰 막대, 대회 중이면 남은 시간과 위 3명(나는 굵게, 4등 아래면 내 줄을 덧붙인다) -------
+local partyCard = Ui.panel(gui, { Name = "PartyCard", Size = UDim2.fromOffset(250, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false })
+Ui.corner(partyCard, 16)
+Ui.make("UIListLayout", partyCard, { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
+Ui.make("UIPadding", partyCard, { PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 10), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+local questTitle = Ui.text(partyCard, "", 14, { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 18), TextColor3 = Ui.MUTED, TextXAlignment = Enum.TextXAlignment.Left })
+local questText = Ui.text(partyCard, "", 17, { FontFace = Ui.FONT_HEAVY, LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 22), TextWrapped = false,
+	TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
+local questBack = Ui.make("Frame", partyCard, { LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 10), BackgroundColor3 = Ui.PARCHMENT_DEEP })
+Ui.corner(questBack, "pill")
+local questFill = Ui.make("Frame", questBack, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Ui.LEAF_DEEP })
+Ui.corner(questFill, "pill")
+local contestText = Ui.text(partyCard, "", 17, { FontFace = Ui.FONT_HEAVY, LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 26), TextColor3 = Ui.GOLD_DEEP,
+	TextXAlignment = Enum.TextXAlignment.Left, Visible = false })
+local scoreText = Ui.text(partyCard, "", 15, { LayoutOrder = 5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, RichText = true,
+	TextXAlignment = Enum.TextXAlignment.Left, Visible = false })
+local lastHave, lastKind
+
+local function scoreLines(contest)
+	local rows = {}
+	for key, score in contest.Scores do
+		local other = Players:GetPlayerByUserId(tonumber(key) or 0)
+		if other then
+			table.insert(rows, { Name = if other == player then "나" else other.DisplayName, Score = score, Me = other == player })
+		end
+	end
+	table.sort(rows, function(a, b)
+		return a.Score > b.Score
+	end)
+	local lines = {}
+	for i, row in rows do
+		if i <= 3 or row.Me then
+			local line = string.format("%d. %s  %d%s", i, row.Name, row.Score, contest.Unit)
+			table.insert(lines, if row.Me then "<b>" .. line .. "</b>" else line)
+		end
+	end
+	return if #lines > 0 then table.concat(lines, "\n") else "아직 기록이 없어요"
+end
+
+local function renderCard()
+	local quest, contest = decode("PartyQuest"), decode("PartyContest")
+	partyCard.Visible = quest ~= nil or contest ~= nil
+	partyCard.Position = UDim2.fromOffset(16, (if touch then 64 else 72) + (if visitPill.Visible then 56 else 0))
+	local t = workspace:GetServerTimeNow()
+	if quest then
+		local resting = quest.RestUntil ~= nil
+		questTitle.Text = if resting then "파티 의뢰 완료!" else string.format("파티 의뢰 · %d / %d", math.min(quest.Have, quest.Need), quest.Need)
+		questText.Text = if resting then string.format("다음 의뢰 %d초", math.max(0, math.ceil(quest.RestUntil - t))) else quest.Label
+		questFill.Size = UDim2.fromScale(if resting then 1 else math.clamp(quest.Have / math.max(quest.Need, 1), 0, 1), 1)
+		if quest.Kind == lastKind and lastHave and quest.Have > lastHave then
+			Juice.Punch(partyCard, 1.05, 0.15)
+		end
+		lastHave, lastKind = quest.Have, quest.Kind
+	end
+	contestText.Visible, scoreText.Visible = contest ~= nil, contest ~= nil
+	if contest then
+		local left = math.max(0, math.floor(contest.Ends - t))
+		contestText.Text = if t < contest.Starts then string.format("%s · 곧 시작 %d", contest.Label, math.ceil(contest.Starts - t))
+			else string.format("%s %d:%02d", contest.Label, left // 60, left % 60)
+		scoreText.Text = scoreLines(contest)
+	end
+end
+for _, key in { "PartyQuest", "PartyContest", "Visiting" } do
+	player:GetAttributeChangedSignal(key):Connect(renderCard)
+end
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		if partyCard.Visible then
+			renderCard() -- 남은 시간
+		end
+	end
+end)
+renderCard()
 
 gui.Parent = player:WaitForChild("PlayerGui")

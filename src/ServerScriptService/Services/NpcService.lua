@@ -26,15 +26,15 @@ local TALK_RANGE = 16 -- 이보다 멀어지면 대화·상점이 닫힌다
 -- 자리는 IslandGen Npc(상점 거리 노점·안내도 옆). 색은 HumanoidDescription(기본 블록 아바타)에 칠한다
 local NPCS = {
 	{
-		Id = "Guide", Name = "안내인 루미",
+		Id = "Guide", Name = "안내인 루미", Role = "밭·땅 넓히기 · 물고기·광석 팔기",
 		Skin = Color3.fromRGB(255, 225, 200), Shirt = Color3.fromRGB(110, 160, 230), Pants = Color3.fromRGB(240, 240, 245),
 	},
 	{
-		Id = "Gardener", Name = "정원사 모모", Shop = "Seeds",
+		Id = "Gardener", Name = "정원사 모모", Shop = "Seeds", Role = "씨앗 · 작물 팔기 · 도우미 동물",
 		Skin = Color3.fromRGB(255, 220, 190), Shirt = Color3.fromRGB(120, 180, 95), Pants = Color3.fromRGB(150, 110, 70),
 	},
 	{
-		Id = "Carpenter", Name = "목수 버니", Shop = "Furniture",
+		Id = "Carpenter", Name = "목수 버니", Shop = "Furniture", Role = "가구",
 		Skin = Color3.fromRGB(240, 200, 170), Shirt = Color3.fromRGB(200, 140, 80), Pants = Color3.fromRGB(90, 110, 150),
 	},
 }
@@ -134,24 +134,23 @@ local ACTIONS = {
 		session.Close = reason == nil -- 성공하면 대화를 닫아 밭이 늘어나는 연출이 가리지 않게
 	end,
 }
--- 땅 사기: 구역마다 행동 하나(BuyChunk_Farm …). 다음 Frontier 자리에 붙이고 지형을 다시 짓는다
+-- 땅 사기: 구역마다 행동 하나(BuyChunk_Farm …). 섬에 붙은 빈 자리(구름 판)에 무작위 바이옴 청크 하나를 붙여 그것만 짓는다
 for _, zone in IslandGen.BuyZones do
 	ACTIONS["BuyChunk_" .. zone] = function(player, session)
 		local profile = DataService.Get(player)
-		local spot = IslandGen.NextChunk(profile.Chunks)
-		if not spot then
+		if not IslandService.CanExpand(player) then
 			session.Result = Lines.Get("GUIDE_NO_LAND")
 			return
 		elseif not Inventory.AddCoins(player, -IslandService.ChunkPrice(profile)) then
 			session.Result = Lines.Get("GUIDE_NO_COINS")
 			return
 		end
-		table.insert(profile.Chunks, { X = spot.X, Z = spot.Z, Zone = zone })
-		local record = IslandService.Rebuild(player, profile)
+		local record, spot = IslandService.AddChunk(player, profile, zone)
 		local chunk = IslandGen.CHUNK
+		local biome = IslandConcepts[spot.Biome or record.Concept]
 		Remotes.Feedback:FireAllClients("Expand", {
 			Player = player, Text = "섬이 넓어졌어요!", Zone = zone,
-			Sub = string.format("%s · %d청크", IslandGen.Zones[zone].Name, #record.Gen.Chunks),
+			Sub = string.format("%s · %s · %d청크", IslandGen.Zones[zone].Name, biome.Name, #record.Gen.Chunks),
 			Position = IslandService.YardPoint(record, (spot.X + 0.5) * chunk, (spot.Z + 0.5) * chunk),
 			Size = chunk * IslandGen.CELL,
 		})
@@ -186,7 +185,7 @@ local function vars(player, session)
 	v.FieldPrice = FarmService.FieldPrice(profile)
 	v.FieldsLeft = FarmService.FieldsLeft(player)
 	v.ChunkPrice = IslandService.ChunkPrice(profile)
-	v.ChunksLeft = if IslandGen.NextChunk(profile.Chunks) then 1 else 0
+	v.ChunksLeft = if IslandService.CanExpand(player) then 1 else 0
 	if island then
 		local loot = island.Gen.Loot
 		v.Island = IslandConcepts[island.Concept].Name
@@ -253,6 +252,25 @@ local function buildNpc(def, island)
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	humanoid.DisplayName = def.Name
 	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- 이름은 아래 이름표가 하는 일과 함께 보인다
+	local tag = Instance.new("BillboardGui") -- 멀리서도 누가 무엇을 하는지(40스터드까지)
+	tag.Name = "RoleTag"
+	tag.Size = UDim2.fromOffset(240, 46)
+	tag.StudsOffset = Vector3.new(0, 2.6, 0)
+	tag.MaxDistance = 40
+	tag.LightInfluence = 0
+	for i, line in { { def.Name, 18, Enum.Font.GothamBlack }, { def.Role or "", 14, Enum.Font.GothamBold } } do
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Position = UDim2.new(0, 0, (i - 1) * 0.52, 0)
+		label.Size = UDim2.fromScale(1, if i == 1 then 0.52 else 0.48)
+		label.Text, label.TextSize, label.Font = line[1], line[2], line[3]
+		label.TextColor3 = if i == 1 then Color3.fromRGB(255, 250, 235) else Color3.fromRGB(255, 236, 190)
+		label.TextStrokeTransparency = 0.25
+		label.TextStrokeColor3 = Color3.fromRGB(110, 78, 52)
+		label.Parent = tag
+	end
+	tag.Parent = model:FindFirstChild("Head") or model.PrimaryPart
 	local root = model.PrimaryPart
 	root.Anchored = true
 

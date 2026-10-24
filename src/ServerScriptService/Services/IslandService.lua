@@ -1,7 +1,7 @@
 -- 플레이어마다 시드 하늘섬(복셀 블록, 4×4 청크 + 산 땅)을 서버 슬롯에 지어 주고, 그 섬에서 (다시) 태어나게 한다. 나가면 섬을 지운다.
 -- 블록은 IslandGen이 시드·산 땅으로 정하고 IslandBuilder가 Part로 짓는다(Workspace.Islands/Island_<UserId>/Terrain).
--- 땅을 사면 Rebuild가 지형(Terrain)만 새로 짓고 바꿔 끼운다. 밭·가구·NPC·집안일은 섬 Model에 따로 있어 그대로 남는다.
--- 다음에 붙을 땅 자리에는 반투명 구름 판과 가격 팻말을 띄운다. 섬에서 떨어지면 죽지 않고 스폰으로 돌아온다.
+-- 땅을 사면 AddChunk가 그 청크 하나만 만들어 지형에 더 짓는다(섬 전체를 다시 짓지 않는다). 자리는 섬에 붙은 빈 자리 중
+-- 무작위(미리 골라 반투명 구름 판과 가격 팻말로 보인다), 바이옴은 살 때 무작위로 정해 저장한다. 섬에서 떨어지면 스폰으로.
 -- 남의 섬에 놀러 가면(MoveTo) 그 섬이 "지금 있는 섬"이 되고 Visiting 속성(주인 UserId)이 붙는다. 떨어지면 그 섬 스폰으로,
 -- 다시 태어나면 내 섬으로. 주인이 나가 섬이 지워지면 거기 있던 사람은 집으로 간다.
 local HttpService = game:GetService("HttpService")
@@ -16,14 +16,16 @@ local SLOT_SPACING = 1200 -- 슬롯 간격(스터드). 6×6청크로 넓힌 섬 
 local FALL_DEPTH = 40 -- 섬 밑면보다 이만큼 떨어지면 스폰으로
 local RESPAWN_DELAY = 3
 local CHUNK_BASE, CHUNK_STEP = 200, 150 -- 땅 값 = 200 + 150 × 이미 산 땅 수
+local FILL_Y = IslandGen.YARD - 2 -- 이 높이에 블록이 있으면 그 칸은 이미 땅(산 청크가 깎인 해안 틈만 메울 때)
 
 local IslandService = {}
-IslandService.Rebuilt = Instance.new("BindableEvent") -- (player, record) 지형을 새로 지은 뒤
+IslandService.Rebuilt = Instance.new("BindableEvent") -- (player, record) 산 청크를 지은 뒤(밭 자리·구역이 늘었다)
 local islands = {} -- [player] = 섬 정보(Spawn이 돌려주는 record)
 local here = {} -- [player] = 지금 있는 섬 record(내 섬 또는 놀러 간 섬)
 local slots = {} -- [slot] = 그 슬롯에 지은 섬 수(연합이면 여러 개)
 local hooked = setmetatable({}, { __mode = "k" }) -- CharacterAdded를 연결한 플레이어
 local folder
+local rng = Random.new()
 
 function IslandService.ChunkPrice(profile)
 	return CHUNK_BASE + CHUNK_STEP * #profile.Chunks
@@ -35,7 +37,7 @@ local function ghost(record, profile)
 		record.Ghost:Destroy()
 		record.Ghost = nil
 	end
-	local spot = IslandGen.NextChunk(profile.Chunks)
+	local spot = record.NextSpot
 	if not spot then
 		return
 	end
@@ -67,23 +69,96 @@ local function ghost(record, profile)
 	record.Ghost = plate
 end
 
-local function build(record, profile)
-	local island = IslandGen.Generate(profile.Seed, profile.Chunks)
-	local terrain = IslandBuilder.Build(island, record.Origin)
-	terrain.Parent = record.Model
-	if record.Terrain then
-		record.Terrain:Destroy() -- 새 지형을 붙인 뒤에 지워서 발밑이 비는 프레임이 없게
+-- 다음 땅 자리를 미리 고른다(섬에 붙은 빈 자리 중 무작위, 다 찼으면 nil)
+local function rollNext(record, profile)
+	local spots = IslandGen.Candidates(profile.Chunks)
+	record.NextSpot = if #spots > 0 then spots[rng:NextInteger(1, #spots)] else nil
+end
+
+-- 시작 섬 + 산 청크를 합친 섬 정보(record.Gen): 청크 목록·구역(ZoneAt)·밭 자리(시작 → 산 순서)·나머지는 시작 섬 것
+-- (NPC 자리 Npc·스폰·획득물 표 Loot). 클라이언트 구역 판정용 Chunks 속성, 떨어짐 높이도 여기서 맞춘다
+local function refreshGen(record, profile)
+	local chunks = IslandGen.Chunks(profile.Chunks)
+	local zones = {}
+	for _, c in chunks do
+		zones[c.X .. "," .. c.Z] = c.Zone
 	end
+	local fields = table.clone(record.Base.Fields)
+	local minY = record.Base.Min.Y
+	for _, gen in record.Gens do
+		if gen ~= record.Base then
+			table.move(gen.Fields, 1, #gen.Fields, #fields + 1, fields)
+			minY = math.min(minY, gen.Min.Y)
+		end
+	end
+	local chunk = IslandGen.CHUNK
+	record.Gen = setmetatable({
+		Chunks = chunks,
+		Fields = fields,
+		ZoneAt = function(x, z)
+			return zones[x // chunk .. "," .. z // chunk]
+		end,
+	}, { __index = record.Base })
+	record.Model:SetAttribute("Chunks", HttpService:JSONEncode(chunks)) -- 클라이언트 구역 판정(핫바·구역 칩)
+	record.FallY = record.Origin.Y + minY * CELL - FALL_DEPTH
+end
+
+-- 새 청크 자리에 걸친 지형 Part(시작 섬의 떠 있는 작은 섬·폭포 등)를 치운다
+local function clearArea(record, c)
+	local low = record.Origin + Vector3.new(c.X, 0, c.Z) * CHUNK_STUDS
+	for _, part in record.Terrain:GetDescendants() do
+		if part:IsA("BasePart") then
+			local half = part.Size / 2
+			if part.Position.X + half.X > low.X + 0.1 and part.Position.X - half.X < low.X + CHUNK_STUDS - 0.1
+				and part.Position.Z + half.Z > low.Z + 0.1 and part.Position.Z - half.Z < low.Z + CHUNK_STUDS - 0.1 then
+				part:Destroy()
+			end
+		end
+	end
+end
+
+-- 산 땅 목록의 i번째까지 보고 그 청크 하나만 만들어 지형에 더 짓는다(산 순서가 같으면 늘 같은 모양). 잘못된 칸이면 nil
+local function buildChunk(record, profile, i)
+	local extra = table.move(profile.Chunks, 1, i, 1, {})
+	local before = #IslandGen.Chunks(table.move(profile.Chunks, 1, i - 1, 1, {}))
+	local list = IslandGen.Chunks(extra)
+	if #list == before then
+		return nil -- 겹치거나 잘못 저장된 칸
+	end
+	local c = list[#list]
+	local gens = record.Gens
+	local gen = IslandGen.GenerateChunk(profile.Seed, extra, c, record.Base.Concept, function(x, z)
+		for _, g in gens do
+			if g.Get(x, FILL_Y, z) ~= 0 then
+				return true
+			end
+		end
+		return false
+	end)
+	clearArea(record, c)
+	IslandBuilder.Build(gen, record.Origin, record.Terrain)
+	table.insert(gens, gen)
+	return c
+end
+
+-- 처음 지을 때: 시작 섬(시드)을 짓고, 산 청크를 산 순서대로 하나씩 더 짓는다
+local function build(record, profile)
+	local base = IslandGen.Generate(profile.Seed)
+	local terrain = IslandBuilder.Build(base, record.Origin)
+	terrain.Parent = record.Model
 	record.Terrain = terrain
 	record.Blocks = terrain.Blocks -- 땅 블록(레이캐스트로 지면을 찾을 때)
 	record.Plants = terrain.Plants -- 나무·버섯·선인장 블록
 	record.Water = terrain.Water
-	record.Gen = island -- 구역(ZoneAt)·밭 자리(Fields)·NPC 자리(Npc)·획득물 표(Loot)
-	record.Model:SetAttribute("Chunks", HttpService:JSONEncode(island.Chunks)) -- 클라이언트 구역 판정(핫바·구역 칩)
-	record.Concept = island.Concept
-	record.FallY = record.Origin.Y + island.Min.Y * CELL - FALL_DEPTH
-	local spawn = record.Origin + island.Spawn * CELL + Vector3.new(0, 3, 0)
+	record.Base, record.Gens = base, { base }
+	for i = 1, #profile.Chunks do
+		buildChunk(record, profile, i)
+	end
+	refreshGen(record, profile)
+	record.Concept = base.Concept
+	local spawn = record.Origin + base.Spawn * CELL + Vector3.new(0, 3, 0)
 	record.Spawn = CFrame.lookAt(spawn, spawn - Vector3.zAxis) -- 북쪽(안내인·노점 거리)을 바라본다
+	rollNext(record, profile)
 	ghost(record, profile)
 end
 
@@ -163,16 +238,29 @@ function IslandService.Ground(record, position, fromY)
 	return if hit and hit.Instance.Parent == record.Blocks and hit.Normal.Y > 0.75 then hit.Position else nil
 end
 
--- 땅을 산 뒤: 지형만 새로 짓고 Rebuilt를 알린다(밭 자리·광석이 바뀐다)
-function IslandService.Rebuild(player, profile)
+-- 땅 사기: 미리 고른 자리(구름 판)에 zone 청크 하나를 붙이고 그 청크만 짓는다. 바이옴은 무작위로 정해 저장한다.
+-- 반환: 섬 record, 붙인 청크 { X, Z, Zone, Biome } (자리가 없으면 nil)
+function IslandService.AddChunk(player, profile, zone)
 	local record = islands[player]
-	if not record then
+	local spot = record and record.NextSpot
+	if not spot or not table.find(IslandGen.BuyZones, zone) then
 		return nil
 	end
-	build(record, profile)
+	local biomes = IslandGen.Biomes()
+	table.insert(profile.Chunks, { X = spot.X, Z = spot.Z, Zone = zone, Biome = biomes[rng:NextInteger(1, #biomes)] })
+	local chunk = buildChunk(record, profile, #profile.Chunks)
+	refreshGen(record, profile)
+	rollNext(record, profile)
+	ghost(record, profile)
 	player:SetAttribute("IslandChunks", #record.Gen.Chunks)
 	IslandService.Rebuilt:Fire(player, record)
-	return record
+	return record, chunk
+end
+
+-- 더 살 수 있는 땅 자리가 남았나
+function IslandService.CanExpand(player)
+	local record = islands[player]
+	return record ~= nil and record.NextSpot ~= nil
 end
 
 function IslandService.Get(player)

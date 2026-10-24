@@ -62,33 +62,41 @@ local function place(entry, ground, look)
 	return CFrame.lookAt(position, Vector3.new(look.X, position.Y, look.Z))
 end
 
--- 앵커한 root를 goal까지 옮긴다(끝날 때까지 기다린다). Hop은 3스터드마다 한 번 뛰고, 나머지는 돌아선 뒤 speed(기본 def.Speed)로 간다.
+-- 앵커한 root를 goal까지 옮긴다(끝날 때까지 기다린다). 길을 3스터드 칸으로 나눠 Hop은 칸마다 한 번 뛰고, 나머지는 돌아선 뒤
+-- speed(기본 def.Speed)로 걷는다. 칸마다 island 땅 높이를 다시 재어 언덕·골짜기를 따라간다(땅이 없는 칸 = 물·다리 위는 직선 높이).
 -- 도우미 동물(PetService)도 쓴다
-function CreatureService.Travel(root, def, goal, speed)
-	local from = root.Position
-	local distance = (goal.Position - from).Magnitude
+function CreatureService.Travel(root, def, goal, island, speed)
+	local start = root.CFrame
+	local distance = (goal.Position - start.Position).Magnitude
+	local steps = math.max(1, math.ceil(distance / 3))
+	local lift = if def.Move == "Fly" then FLY_HEIGHT else 0
+	local function at(t) -- 길 위 t(0..1) 자리. 끝은 goal 그대로
+		local c = start:Lerp(goal, t)
+		local ground = t < 1 and IslandService.Ground(island, c.Position, c.Position.Y + 10)
+		return if ground then c + Vector3.new(0, ground.Y + lift - c.Position.Y, 0) else c
+	end
 	if def.Move == "Hop" then
-		local hops = math.max(1, math.ceil(distance / 3))
-		local start = root.CFrame
-		for i = 1, hops do
-			local stepGoal = start:Lerp(goal, i / hops)
+		for i = 1, steps do
 			local up = TweenService:Create(root, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ CFrame = start:Lerp(goal, (i - 0.5) / hops) + Vector3.new(0, 1.6, 0) })
+				{ CFrame = at((i - 0.5) / steps) + Vector3.new(0, 1.6, 0) })
 			up:Play()
 			up.Completed:Wait()
-			local down = TweenService:Create(root, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = stepGoal })
+			local down = TweenService:Create(root, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = at(i / steps) })
 			down:Play()
 			down.Completed:Wait()
 			task.wait(0.12)
 		end
 	else
-		local turn = TweenService:Create(root, TweenInfo.new(0.3), { CFrame = CFrame.lookAt(from, from + goal.LookVector) })
+		local turn = TweenService:Create(root, TweenInfo.new(0.3), { CFrame = CFrame.lookAt(start.Position, start.Position + goal.LookVector) })
 		turn:Play()
 		turn.Completed:Wait()
-		local walk = TweenService:Create(root, TweenInfo.new(distance / (speed or def.Speed), Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-			{ CFrame = goal })
-		walk:Play()
-		walk.Completed:Wait()
+		start = root.CFrame -- 돌아선 방향에서 걷기 시작
+		local each = TweenInfo.new(distance / steps / (speed or def.Speed), Enum.EasingStyle.Linear)
+		for i = 1, steps do
+			local walk = TweenService:Create(root, each, { CFrame = at(i / steps) })
+			walk:Play()
+			walk.Completed:Wait()
+		end
 	end
 end
 
@@ -101,7 +109,7 @@ local function move(entry, island)
 		return
 	end
 	CreatureService.Travel(root, Creatures[entry.Id], place(entry, target, target + (target - root.Position) * Vector3.new(1, 0, 1)
-		+ Vector3.new(0.01, 0, 0)))
+		+ Vector3.new(0.01, 0, 0)), island)
 end
 
 function CreatureService.Load(player, island)

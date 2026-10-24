@@ -11,6 +11,7 @@ local DataService = require(script.Parent.DataService)
 local DexService = require(script.Parent.DexService)
 local Inventory = require(script.Parent.Inventory)
 local IslandService = require(script.Parent.IslandService)
+local PartyPlayService = require(script.Parent.PartyPlayService)
 
 local REACH = 45 -- 캐릭터에서 찌까지(스터드)
 local WAIT_MIN, WAIT_MAX = 2.5, 6.5 -- 입질까지 기다리는 초
@@ -84,6 +85,7 @@ local function reel(player)
 		Text = "+1 " .. fish.Name .. (if special then " · 섬 명물!" else ""),
 	})
 	DexService.Record(player, "Fish", id)
+	PartyPlayService.Count(player, "Fish")
 end
 
 function FishService.Unload(player)

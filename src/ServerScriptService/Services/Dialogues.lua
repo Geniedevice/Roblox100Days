@@ -5,7 +5,7 @@
 -- 다시 올 수 있는 노드에는 Set·Action을 두지 않는다(두 번 적용되므로). 시작할 때 NpcService가 그래프를 검사한다.
 local function expandChoices()
 	local list = {}
-	for _, zone in { "Farm", "House", "Mine", "Wild" } do
+	for _, zone in { "Farm", "House", "Wild" } do -- IslandGen.BuyZones와 같게(광산은 숲의 광석 바위로 바뀌었다)
 		table.insert(list, { Text = "OPT_ZONE_" .. string.upper(zone), Action = "BuyChunk_" .. zone, To = "result" })
 	end
 	table.insert(list, { Text = "OPT_BACK", To = "hello" })

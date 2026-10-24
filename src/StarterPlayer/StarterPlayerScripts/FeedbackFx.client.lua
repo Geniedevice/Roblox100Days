@@ -26,8 +26,10 @@ local SMOKE, SPARKLE = Juice.SMOKE, Juice.SPARKLE
 
 -- 행동의 접촉 프레임(초, 신호 기준). ActionAnimator 단계 길이와 맞춘다
 local CONTACT = { Till = 0.32, Plant = 0.2, Water = 0.2, Harvest = 0.33, Clean = 0.33, Place = 0.18, Pickup = 0.18,
-	Catch = 0.15, MineHit = 0.28, MineBreak = 0.28, Pet = 0.2 }
-local COUNTED = { Till = true, Plant = true, Water = true, Harvest = true, Clean = true, Place = true, MineBreak = true, Catch = true, Pet = true }
+	Catch = 0.15, MineHit = 0.28, MineBreak = 0.28, Pet = 0.2, PetLove = 0.2, Shake = 0.33, EventOpen = 0.33 }
+local COUNTED = { Till = true, Plant = true, Water = true, Harvest = true, Clean = true, Place = true, MineBreak = true, Catch = true, Pet = true,
+	PetLove = true, Shake = true, EventOpen = true }
+local NO_FLOAT = { Miss = true, Pet = true, PetLove = true, Greet = true, HighFive = true, Toast = true, DexNew = true, Expand = true } -- 글을 따로 보인다
 
 local function characterPosition()
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -55,6 +57,24 @@ local function itemFly(position, itemId, kind, id, delay)
 	Juice.Fly(position, kind, id, target, function()
 		Juice.Sound("clickfast.wav", 1.8, 0.2)
 	end, delay)
+end
+
+-- 말풍선(2.5초): Cream 알약 + Cocoa 테두리, part 위 lift스터드
+local function bubble(part, text, lift)
+	if not part or not text then
+		return
+	end
+	local gui = Ui.make("BillboardGui", player.PlayerGui, { Adornee = part, Size = UDim2.fromOffset(260, 40),
+		StudsOffset = Vector3.new(0, lift or 3, 0), AlwaysOnTop = true, LightInfluence = 0, MaxDistance = 70 })
+	local pill = Ui.pill(gui, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromOffset(0, 34),
+		AutomaticSize = Enum.AutomaticSize.X, Visible = false })
+	Ui.make("UIPadding", pill, { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+	Ui.text(pill, text, 15, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1), TextWrapped = false })
+	Ui.open(pill)
+	task.delay(2.5, function()
+		Ui.close(pill)
+		task.delay(0.15, gui.Destroy, gui)
+	end)
 end
 
 -- 행동별 연출. info = 서버 신호 정보, mine = 내 행동인가, v = 소리 크기 배율(남의 행동 0.5)
@@ -292,8 +312,10 @@ local KINDS = {
 			itemFly(info.Position + Vector3.new(0, 1.5, 0), "Ore_" .. info.Ore, "Ore", info.Ore, 0.25)
 		end
 	end,
+	-- 다시 솟는 광석: 작게 나타나 제 크기로 튀어 오른다(MineService가 블록을 다시 보이게 한 순간)
 	OreRespawn = function(info, _, v)
 		local ore = info.Part and Ores[info.Part:GetAttribute("Ore")]
+		Juice.Squash(info.Part, Vector3.new(0.2, 0.2, 0.2), 0.01, 0.35)
 		Juice.Burst(info.Position, { Color = ore and ore.Color or WHITE, Count = 10, Size = 0.4, Speed = 3, Life = 0.8, Gravity = -2, Glow = 1 })
 		Juice.Sound("electronicpingshort.wav", 1.8, 0.12 * v, 0, info.Position)
 	end,
@@ -305,6 +327,67 @@ local KINDS = {
 		if mine then
 			Juice.Float(info.Position, info.Text or "♥", Ui.BERRY)
 			Juice.Shake(0.15, 14, 0.12)
+		end
+	end,
+	-- 도우미 동물 쓰다듬기: 폴짝 커졌다 돌아오고 하트, 말풍선(내 동물이면 한 일)
+	PetLove = function(info, mine, v)
+		local model = info.Model
+		Juice.ScaleModel(model, { { 1.2, 0.08 }, { 0.92, 0.1 }, { 1, 0.18, Enum.EasingStyle.Back } })
+		Juice.Burst(info.Position, { Color = { Ui.BERRY, rgb(255, 200, 220) }, Count = 14, Size = 0.6, Speed = 4, Life = 1, Gravity = -3, Glow = 0.6 })
+		Juice.Sound("short spring sound.wav", 1.5, 0.35 * v, 0, info.Position)
+		if model and model.PrimaryPart then
+			bubble(model.PrimaryPart, info.Text, model:GetExtentsSize().Y + 1.5)
+		end
+		if mine then
+			Juice.Shake(0.15, 14, 0.12)
+		end
+	end,
+	-- 인사하기: 하트·별과 "안녕!" 말풍선(손 흔들기는 ActionAnimator)
+	Greet = function(info, _, v)
+		local head = info.Player and info.Player.Character and info.Player.Character:FindFirstChild("Head")
+		Juice.Burst(info.Position, { Color = { Ui.BERRY, Ui.SUN }, Count = 10, Size = 0.5, Speed = 4, Life = 0.9, Gravity = -2, Glow = 0.8 })
+		Juice.Sound("electronicpingshort.wav", 1.6, 0.3 * v, 0, info.Position)
+		bubble(head, info.Text, 2.5)
+	end,
+	-- 하이파이브(둘이 서로 인사): 별 터짐·링·짝! 소리, 두 사람 머리 위 말풍선. 코인이 붙으면 코인 알약으로
+	HighFive = function(info, mine, v)
+		Juice.Burst(info.Position, { Color = { Ui.SUN, Ui.BERRY, Ui.SKY }, Count = 26, Size = 0.6, Speed = 10, Life = 0.8, Gravity = 4, Glow = 1,
+			Spread = 180 })
+		Juice.Ring(info.Position, Ui.SUN, 1, 6, 0.3)
+		Juice.Sound("snap.mp3", 1.1, 0.7 * v, 0, info.Position)
+		Juice.Sound("victory.wav", 1.5, 0.25 * v, 0.06, info.Position)
+		for _, who in { info.Player, info.Target } do
+			bubble(who and who.Character and who.Character:FindFirstChild("Head"), info.Text, 2.5)
+		end
+		if mine then
+			Juice.Shake(0.25, 18, 0.15)
+			if info.Coins then
+				coinsFly(info.Position, info.Coins)
+			end
+		end
+	end,
+	-- 나무 흔들기: 블록이 흔들리고 잎이 떨어진다. 코인이 떨어지면 코인 알약으로
+	Shake = function(info, mine, v)
+		local color = info.Part and info.Part.Color or rgb(90, 150, 60)
+		Juice.Squash(info.Part, Vector3.new(1.1, 0.94, 1.1), 0.05, 0.3)
+		Juice.Burst(info.Position, { Color = { color, rgb(120, 180, 80) }, Count = 16, Size = 0.5, Speed = 4, Life = 1.4, Gravity = 6 })
+		Juice.Sound("action_jump_land.mp3", 1.5, 0.35 * v, 0, info.Position)
+		Juice.Sound("clickfast.wav", 0.8, 0.2 * v, 0.05, info.Position)
+		if mine and info.Coins then
+			coinsFly(info.Position, math.min(info.Coins, 5))
+		end
+	end,
+	-- 섬 이벤트를 열었다(선물·나비·반짝이는 땅): 색종이·링·팡파르
+	EventOpen = function(info, mine, v)
+		Juice.Burst(info.Position + Vector3.new(0, 2, 0), { Color = { Ui.BERRY, Ui.SUN, Ui.SKY, Ui.MINT }, Count = 40, Size = 0.5, Speed = 14,
+			Life = 1.2, Gravity = 20, Glow = 0.6, Spread = 180 })
+		Juice.Ring(info.Position, Ui.SUN, 1, 8, 0.4)
+		Juice.Sound("victory.wav", 1.2, 0.4 * v, 0, info.Position)
+		if mine then
+			Juice.Shake(0.3, 16, 0.2)
+			if info.Coins then
+				coinsFly(info.Position, math.clamp(math.ceil(info.Coins / 10), 3, 8))
+			end
 		end
 	end,
 	-- 섬 확장(땅·밭): 새 땅 위 구름 연기, 모서리 빛기둥, 가장자리 링, 화면 Warm, 큰 흔들림
@@ -361,7 +444,7 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 	if not run then
 		return
 	end
-	local mine = info.Player == player or kind == "DexNew" or kind == "Toast"
+	local mine = info.Player == player or kind == "DexNew" or kind == "Toast" or (kind == "HighFive" and info.Target == player)
 	local position = info.Position
 	if not mine and (not position or (workspace.CurrentCamera.CFrame.Position - position).Magnitude > HEAR) then
 		return
@@ -371,7 +454,7 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 	end
 	local function go()
 		run(info, mine, if mine then 1 else 0.5)
-		if info.Text and mine and kind ~= "Miss" and kind ~= "Pet" and kind ~= "Toast" and kind ~= "DexNew" and kind ~= "Expand" and position then
+		if info.Text and mine and not NO_FLOAT[kind] and position then
 			Juice.Float(position + Vector3.new(0, 1, 0), info.Text)
 		end
 	end
@@ -425,7 +508,8 @@ local function pointable(instance)
 		return instance
 	end
 	while instance and instance ~= workspace do
-		if CollectionService:HasTag(instance, "Creature") then
+		if CollectionService:HasTag(instance, "Creature") or CollectionService:HasTag(instance, "Pet")
+			or CollectionService:HasTag(instance, "IslandEvent") then
 			return instance
 		end
 		local owner = instance:GetAttribute("Owner")

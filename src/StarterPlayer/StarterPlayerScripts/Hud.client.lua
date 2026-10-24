@@ -21,7 +21,11 @@ local WorldPointer = require(script.Parent:WaitForChild("WorldPointer"))
 
 local player = Players.LocalPlayer
 local CELL, CHUNK = 3, 16
-local ZONE_NAMES = { Plaza = "상점 거리", Farm = "농장", Fishing = "낚시터", House = "집터", Mine = "광산", Wild = "숲" }
+local ZONE_NAMES = { Plaza = "상점 거리", Farm = "농장", Fishing = "낚시터", House = "집터", Wild = "숲" }
+-- 구역에 들어설 때 칩에 붙는 "여기서 할 수 있는 일"(design/ux/hud.md)
+local ZONE_HINTS = { Plaza = "모모·버니·루미와 이야기해요", Farm = "밭을 갈고 씨앗을 뿌려요", Fishing = "물가에서 낚시해요",
+	House = "꾸미기 버튼으로 가구를 놓아요", Wild = "광석 바위를 캐고 생물을 쓰다듬어요" }
+local ZONE_CHIP_TIME = 3
 local GRADES = { { 0, 15, "D", Color3.fromRGB(170, 160, 150) }, { 15, 45, "C", Ui.MINT }, { 45, 75, "B", Ui.SKY },
 	{ 75, 110, "A", Ui.SUN }, { 110, 110, "S", Ui.BERRY } }
 local touch = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
@@ -212,8 +216,8 @@ local function showToast(text)
 	end)
 end
 
-local zoneChip = Ui.pill(gui, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 124), Size = UDim2.fromOffset(0, 32),
-	AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Ui.PARCHMENT, Visible = false })
+local zoneChip = Ui.pill(gui, { Name = "ZoneChip", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 124),
+	Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Ui.PARCHMENT, Visible = false })
 Ui.make("UIPadding", zoneChip, { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) })
 local zoneText = Ui.text(zoneChip, "", 15, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1), TextWrapped = false })
 local zoneShown = 0
@@ -358,7 +362,7 @@ end)
 
 -- 핫바(아래 가운데): 도구 칸 + 구역 아이템 칸 ----------------------------------------------------
 local SLOT = if touch then Vector2.new(60, 68) else Vector2.new(76, 84)
-local hotbar = Ui.make("Frame", gui, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, if touch then -10 else -16),
+local hotbar = Ui.make("Frame", gui, { Name = "Hotbar", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, if touch then -10 else -16),
 	Size = UDim2.fromOffset(0, SLOT.Y + 8), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1 })
 Ui.make("UIListLayout", hotbar, { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, if touch then 6 else 8),
 	VerticalAlignment = Enum.VerticalAlignment.Bottom, SortOrder = Enum.SortOrder.LayoutOrder })
@@ -414,7 +418,7 @@ local function setCounts(handle, count, badge)
 end
 
 local function zoneTool(zone)
-	return if zone == "Fishing" then "Rod" elseif zone == "Mine" then "Pickaxe" else "Hoe"
+	return if zone == "Fishing" then "Rod" elseif zone == "Wild" then "Pickaxe" else "Hoe" -- 숲에 광석 바위가 솟는다
 end
 
 -- 지금 서 있는 섬·구역(섬 Model의 Chunks 속성으로 계산)
@@ -453,7 +457,7 @@ local function rebuildHotbar(force)
 				table.insert(entries, { Order = fish.Order, Kind = "Fish", Id = id, Item = "Fish_" .. id, Count = n })
 			end
 		end
-	elseif currentZone == "Mine" then
+	elseif currentZone == "Wild" then
 		for id, ore in Ores do
 			local n = player:GetAttribute("Item_Ore_" .. id) or 0
 			if n > 0 then
@@ -535,7 +539,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	local index = ({ [Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3 })[input.KeyCode]
-	if index and currentZone ~= "Fishing" and currentZone ~= "Mine" then
+	if index and currentZone ~= "Fishing" and currentZone ~= "Wild" then
 		for id, crop in Crops do
 			if crop.Order == index then
 				selectedSeed = id
@@ -703,6 +707,9 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 		queueBanner({ Kind = "Expand", Small = info.Small, Title = info.Text, Sub = info.Sub,
 			IconKind = "Chunk", IconId = info.Zone or "Farm",
 			Progress = if info.Small then nil else math.clamp((chunks - 16) / 20, 0, 1), Before = math.clamp((chunks - 17) / 20, 0, 1) })
+	elseif kind == "Banner" then -- 파티 의뢰 완료·대회 시작·끝(PartyPlayService)
+		queueBanner({ Kind = "Banner", Title = info.Title, Sub = info.Sub, IconKind = info.IconKind or "Friends" })
+		Juice.Sound("victory.wav", 1.3, 0.3)
 	elseif kind == "Bite" and info.Player == player and touch then
 		pullToken += 1
 		local mine = pullToken
@@ -720,6 +727,82 @@ Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
 		end)
 	elseif (kind == "Catch" or kind == "Miss") and info.Player == player then
 		hidePull()
+	end
+end)
+
+-- 얻은 것 알림(핫바 위): 아이콘 + "철 +1" + 가진 수. 캔 광석·낚은 물고기·거둔 작물(도우미 동물·친구가 내 밭에서 거둔 것도).
+-- 같은 것을 2.6초 안에 또 얻으면 한 줄에서 숫자만 오른다. 최대 3줄, 새 줄이 핫바에 가장 가깝다
+local FEED_MAX, FEED_TIME = 3, 2.6
+local feed = Ui.make("Frame", gui, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(SLOT.Y + (if touch then 26 else 36))),
+	Size = UDim2.fromOffset(300, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1 })
+Ui.make("UIListLayout", feed, { Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center,
+	VerticalAlignment = Enum.VerticalAlignment.Bottom, SortOrder = Enum.SortOrder.LayoutOrder })
+local feedRows, feedOrder = {}, 0 -- [아이템 Id] = { Frame, Label, Total, Count, Token }
+
+local function dropRow(itemId)
+	local row = feedRows[itemId]
+	feedRows[itemId] = nil
+	Ui.close(row.Frame)
+	task.delay(0.15, row.Frame.Destroy, row.Frame)
+end
+
+local function gained(itemId, name, amount)
+	feedOrder += 1
+	local row = feedRows[itemId]
+	if not row then
+		local oldest, count = nil, 0
+		for id, other in feedRows do
+			count += 1
+			if not oldest or other.Frame.LayoutOrder < feedRows[oldest].Frame.LayoutOrder then
+				oldest = id
+			end
+		end
+		if count >= FEED_MAX then
+			dropRow(oldest)
+		end
+		local frame = Ui.pill(feed, { Size = UDim2.fromOffset(0, 42), AutomaticSize = Enum.AutomaticSize.X, Visible = false })
+		Ui.make("UIListLayout", frame, { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
+		Ui.make("UIPadding", frame, { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 16) })
+		local kind, id = Icons.ForItem(itemId)
+		Icons.View(kind, id, { Size = UDim2.fromOffset(36, 36), LayoutOrder = 1 }).Parent = frame
+		row = { Frame = frame, Count = 0, Token = 0,
+			Label = Ui.text(frame, "", 17, { LayoutOrder = 2, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36),
+				TextWrapped = false, FontFace = Ui.FONT_HEAVY }),
+			Total = Ui.text(frame, "", 14, { LayoutOrder = 3, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36),
+				TextWrapped = false, TextColor3 = Ui.MUTED }) }
+		feedRows[itemId] = row
+		Ui.open(frame)
+	end
+	row.Frame.LayoutOrder = feedOrder
+	row.Count += amount
+	row.Label.Text = string.format("%s +%d", name, row.Count)
+	task.delay(0.1, function() -- 보관함 속성이 신호보다 늦게 올 수 있다
+		row.Total.Text = "가진 수 " .. (player:GetAttribute("Item_" .. itemId) or row.Count)
+	end)
+	Juice.Punch(row.Frame, 1.08, 0.15)
+	row.Token += 1
+	local token = row.Token
+	task.delay(FEED_TIME, function()
+		if feedRows[itemId] == row and row.Token == token then
+			dropRow(itemId)
+		end
+	end)
+end
+
+Remotes.Feedback.OnClientEvent:Connect(function(kind, info)
+	if type(info) ~= "table" then
+		return
+	elseif kind == "MineBreak" and info.Player == player and Ores[info.Ore] then
+		task.delay(0.3, gained, "Ore_" .. info.Ore, Ores[info.Ore].Name, 1) -- 곡괭이가 닿은 뒤
+	elseif kind == "Catch" and info.Player == player and Fish[info.Item] then
+		task.delay(0.3, gained, "Fish_" .. info.Item, Fish[info.Item].Name, 1)
+	elseif kind == "Harvest" and info.Owner == player and Crops[info.Item] then
+		task.delay(0.3, gained, info.Item, Crops[info.Item].Name, info.Count or 1)
+	elseif (kind == "EventOpen" or kind == "Shake") and info.Player == player and type(info.Item) == "string" then
+		local prefix, id = info.Item:match("^(%a+)_(.+)$")
+		local name = if prefix == "Seed" and Crops[id] then Crops[id].Name .. " 씨앗" elseif prefix == "Ore" and Ores[id] then Ores[id].Name else info.Item
+		task.delay(0.35, gained, info.Item, name, info.Count or 1)
 	end
 end)
 
@@ -743,12 +826,8 @@ end)
 -- 수확하기, 물 준 뒤 자라는 중이면 살펴보기(남은 시간 토스트). 친구 밭은 파티·연합이면 물주기, 주인이 허락하면 수확하기만.
 -- 프롬프트는 클라이언트에만 있고(내 화면용), 누르면 농지를 누른 것과 같은 요청을 보낸다. 판정은 서버.
 local PROMPT_RANGE = 9 -- 캐릭터에서 농지까지(수평, 스터드)
-local promptAnchor = Ui.make("Part", workspace, { Name = "TilePromptAnchor", Anchored = true, CanCollide = false, CanQuery = false,
-	CanTouch = false, Transparency = 1, Size = Vector3.new(1, 1, 1) }) -- 농지가 다시 지어져도 프롬프트가 같이 지워지지 않게
-local tilePrompt = Ui.make("ProximityPrompt", promptAnchor, { HoldDuration = 0, MaxActivationDistance = PROMPT_RANGE + 4,
-	RequiresLineOfSight = false, Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton, Enabled = false })
 local promptTile
-tilePrompt.Triggered:Connect(function()
+local showTilePrompt = WorldPointer.Prompt("TilePrompt", function()
 	if promptTile and promptTile.Parent then
 		useTile(promptTile)
 	end
@@ -813,11 +892,7 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 	promptTile = best
-	if best then
-		promptAnchor.CFrame = best.CFrame + Vector3.new(0, 1, 0)
-		tilePrompt.ActionText, tilePrompt.ObjectText = bestAction, bestObject
-	end
-	tilePrompt.Enabled = best ~= nil
+	showTilePrompt(best and best.Position + Vector3.new(0, 1, 0), bestAction, bestObject)
 end)
 
 -- 구역이 바뀌면 칩과 핫바
@@ -835,12 +910,12 @@ RunService.Heartbeat:Connect(function()
 		if zone then
 			zoneShown += 1
 			local mine = zoneShown
-			zoneText.Text = ZONE_NAMES[zone] or zone
-			zoneChip.Visible = true
+			zoneText.Text = (ZONE_NAMES[zone] or zone) .. (if ZONE_HINTS[zone] then "  ·  " .. ZONE_HINTS[zone] else "")
+			Ui.open(zoneChip)
 			Juice.Punch(zoneChip, 0.8, 0.16)
-			task.delay(1.5, function()
+			task.delay(ZONE_CHIP_TIME, function()
 				if zoneShown == mine then
-					zoneChip.Visible = false
+					Ui.close(zoneChip)
 				end
 			end)
 		end

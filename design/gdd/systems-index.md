@@ -46,9 +46,11 @@ The game needs few systems but every one sits on the same spine: a seed-built is
 | 12 | Party & Visiting | Gameplay | Alpha | Implemented (same server) | design/gdd/party-visiting.md | Island Generation, Data Persistence, Farming, Fishing, Collection Dex |
 | 13 | Fishing | Gameplay | MVP | Implemented | design/gdd/fishing.md | Island Zones & Expansion, Inventory & Economy, Collection Dex |
 | 14 | Island Union | Gameplay | Full Vision | Implemented (same server) | design/gdd/island-union.md | Party & Visiting, Island Generation, Data Persistence, Farming, Collection Dex |
-| 15 | Mining | Gameplay | MVP | Implemented | design/gdd/mining.md | Island Zones & Expansion, Inventory & Economy, Collection Dex |
+| 15 | Mining (ore rocks, 2026-10-24) | Gameplay | MVP | Implemented | design/gdd/mining.md | Island Zones & Expansion, Inventory & Economy, Collection Dex |
 | 16 | Creatures | Gameplay | Vertical Slice | Implemented | design/gdd/creatures.md | Island Generation, Island Zones & Expansion, Collection Dex |
 | 17 | Pets (도우미 동물) | Gameplay | Vertical Slice | Implemented | design/gdd/pets.md | Farming, Creatures, NPC Dialogue & Shops, Inventory & Economy |
+| 18 | Island Events & Small Interactions | Gameplay | Vertical Slice | Implemented (solo Play smoke, no errors) | design/gdd/island-events.md | Island Generation, Inventory & Economy, Interaction Feedback, HUD |
+| 19 | Party Play | Gameplay | Alpha | Implemented (rule test 26 pass; two-client check by hand) | design/gdd/party-play.md | Party & Visiting, Inventory & Economy, Farming, Fishing, Mining, Island Events, HUD |
 
 ---
 

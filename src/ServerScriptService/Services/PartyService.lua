@@ -1,6 +1,7 @@
 -- 파티·섬 방문(같은 서버). 파티는 서버 메모리에만 두고 PartyId·PartyLeader 속성으로 모두에게 보인다(1번 = 파티장).
 -- 방문: 주인 설정 VisitParty가 켜져 있으면 같은 파티만. 처음 간 섬의 컨셉은 방문자 도감 "섬"에 남는다.
 -- 남의 밭 권한(Same·CanHarvest)은 FarmService가 부른다. 표는 design/gdd/party-visiting.md.
+-- 파티 의뢰·대회·인사·하이파이브는 PartyPlayService(Members로 파티원을 읽는다).
 -- ponytail: 다른 서버 친구 초대(SocialService:PromptGameInvite + TeleportService + ReserveServer)는 publish 뒤에 붙인다.
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -46,6 +47,11 @@ end
 function PartyService.Same(a, b)
 	local union = a:GetAttribute("UnionId")
 	return a == b or (partyOf[a] ~= nil and partyOf[a] == partyOf[b]) or (union ~= nil and union == b:GetAttribute("UnionId"))
+end
+
+-- 파티원 목록(들어온 순서, 1번 = 파티장). 파티가 없으면 nil
+function PartyService.Members(player)
+	return partyOf[player] and partyOf[player].Members
 end
 
 -- 남의 밭 수확: 같은 파티이고 주인이 "파티원 수확"을 켰을 때
